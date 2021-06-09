@@ -43,7 +43,7 @@ jobs:
     - 
       name: Tweak Thompson Shell Backwards Compatibility
       id: thompson
-      run: sh -c "echo ':APE:M::MZqFpD::/bin/sh:' >/proc/sys/fs/binfmt_misc/register"
+      run: sudo sh -c "echo ':APE:M::MZqFpD::/bin/sh:' >/proc/sys/fs/binfmt_misc/register"
     -
       name: Docker build and push
       uses: docker/build-push-action@v2
