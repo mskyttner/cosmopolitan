@@ -11,8 +11,8 @@ COPY . cosmopolitan
 RUN N_CPU=$((`nproc --all`)) && \
 	echo "Number of CPUs: $N_CPU\n" && \
 	cd cosmopolitan && \
-	make MODE=rel o//tool/net/redbean.com -j$N_CPU V=0 && \
-	make MODE=rel o//third_party/sqlite3 -j$N_CPU V=0
+	make o//tool/net/redbean.com -j$N_CPU V=0 && \
+	make o//third_party/sqlite3 -j$N_CPU V=0
 
 RUN find cosmopolitan/o -type f -name "*\.com" -exec cp {} /tmp \;
 
