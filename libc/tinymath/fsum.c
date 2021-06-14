@@ -1,7 +1,7 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
 │vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
 ╞══════════════════════════════════════════════════════════════════════════════╡
-│ Copyright 2020 Justine Alexandra Roberts Tunney                              │
+│ Copyright 2021 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
 │ Permission to use, copy, modify, and/or distribute this software for         │
 │ any purpose with or without fee is hereby granted, provided that the         │
@@ -16,38 +16,16 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/calls/calls.h"
-#include "libc/calls/internal.h"
-#include "libc/dce.h"
+#include "libc/math.h"
+#include "libc/str/str.h"
 
 /**
- * Does things with file descriptor, via re-imagined hourglass api, e.g.
- *
- *     CHECK_NE(-1, fcntl(fd, F_SETFD, FD_CLOEXEC));
- *
- * This function implements POSIX Advisory Locks, e.g.
- *
- *     CHECK_NE(-1, fcntl(zfd, F_SETLKW, &(struct flock){F_WRLCK}));
- *     // ...
- *     CHECK_NE(-1, fcntl(zfd, F_SETLK, &(struct flock){F_UNLCK}));
- *
- * Please be warned that locks currently do nothing on Windows since
- * figuring out how to polyfill them correctly is a work in progress.
- *
- * @param cmd can be F_{GET,SET}{FD,FL}, etc.
- * @param arg can be FD_CLOEXEC, etc. depending
- * @return 0 on success, or -1 w/ errno
- * @asyncsignalsafe
+ * Adds doubles in array.
  */
-int fcntl(int fd, int cmd, ...) {
-  va_list va;
-  uintptr_t arg;
-  va_start(va, cmd);
-  arg = va_arg(va, uintptr_t);
-  va_end(va);
-  if (!IsWindows()) {
-    return sys_fcntl(fd, cmd, arg);
-  } else {
-    return sys_fcntl_nt(fd, cmd, arg);
-  }
+double fsum(const double *p, size_t n) {
+  size_t i;
+  double s;
+  if (n > 8) return fsum(p, n / 2) + fsum(p + n / 2, n - n / 2);
+  for (s = i = 0; i < n; ++i) s += p[i];
+  return s;
 }

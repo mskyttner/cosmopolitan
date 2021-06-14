@@ -1,7 +1,7 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
 │vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
 ╞══════════════════════════════════════════════════════════════════════════════╡
-│ Copyright 2020 Justine Alexandra Roberts Tunney                              │
+│ Copyright 2021 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
 │ Permission to use, copy, modify, and/or distribute this software for         │
 │ any purpose with or without fee is hereby granted, provided that the         │
@@ -16,38 +16,39 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/calls/calls.h"
-#include "libc/calls/internal.h"
-#include "libc/dce.h"
+#include "libc/macros.internal.h"
+#include "libc/math.h"
+#include "libc/runtime/gc.internal.h"
+#include "libc/testlib/ezbench.h"
+#include "libc/testlib/testlib.h"
+#include "libc/x/x.h"
 
-/**
- * Does things with file descriptor, via re-imagined hourglass api, e.g.
- *
- *     CHECK_NE(-1, fcntl(fd, F_SETFD, FD_CLOEXEC));
- *
- * This function implements POSIX Advisory Locks, e.g.
- *
- *     CHECK_NE(-1, fcntl(zfd, F_SETLKW, &(struct flock){F_WRLCK}));
- *     // ...
- *     CHECK_NE(-1, fcntl(zfd, F_SETLK, &(struct flock){F_UNLCK}));
- *
- * Please be warned that locks currently do nothing on Windows since
- * figuring out how to polyfill them correctly is a work in progress.
- *
- * @param cmd can be F_{GET,SET}{FD,FL}, etc.
- * @param arg can be FD_CLOEXEC, etc. depending
- * @return 0 on success, or -1 w/ errno
- * @asyncsignalsafe
- */
-int fcntl(int fd, int cmd, ...) {
-  va_list va;
-  uintptr_t arg;
-  va_start(va, cmd);
-  arg = va_arg(va, uintptr_t);
-  va_end(va);
-  if (!IsWindows()) {
-    return sys_fcntl(fd, cmd, arg);
-  } else {
-    return sys_fcntl_nt(fd, cmd, arg);
+#define N 100000
+
+float F[N];
+double D[N];
+
+void SetUp(void) {
+  int i;
+  for (i = 0; i < N / 2; ++i) {
+    D[i * 2 + 0] = 1000000000.1;
+    D[i * 2 + 1] = 1.1;
   }
+  for (i = 0; i < N / 2; ++i) {
+    F[i * 2 + 0] = 1000.1;
+    F[i * 2 + 1] = 1.1;
+  }
+}
+
+TEST(fsum, test) {
+  EXPECT_STREQ("500000000.6", gc(xasprintf("%.15g", fsum(D, N) / N)));
+}
+
+TEST(fsumf, test) {
+  EXPECT_STREQ("500.6", gc(xasprintf("%.7g", fsumf(F, N) / N)));
+}
+
+BENCH(fsum, bench) {
+  EZBENCH2("fsum", donothing, fsum(D, N));
+  EZBENCH2("fsumf", donothing, fsumf(F, N));
 }
