@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,6 +16,7 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
+#include "libc/limits.h"
 #include "libc/macros.internal.h"
 #include "libc/runtime/runtime.h"
 #include "libc/str/str.h"
@@ -39,7 +40,7 @@ const char *FindComBinary(void) {
   const char *p;
   if (!g_findcombinary.once) {
     g_findcombinary.once = true;
-    if ((p = (const char *)getauxval(AT_EXECFN)) &&
+    if ((p = GetProgramExecutableName()) &&
         (len = strlen(p)) < ARRAYLEN(g_findcombinary.buf)) {
       g_findcombinary.res = memcpy(g_findcombinary.buf, p, len + 1);
       if (len > 4 && memcmp(&g_findcombinary.buf[len - 4], ".dbg", 4) == 0) {

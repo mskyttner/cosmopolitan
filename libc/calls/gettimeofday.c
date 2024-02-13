@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,36 +16,44 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/assert.h"
-#include "libc/calls/internal.h"
+#include "libc/calls/struct/timespec.h"
 #include "libc/calls/struct/timeval.h"
-#include "libc/dce.h"
-#include "libc/sysv/errfuns.h"
+#include "libc/sysv/consts/clock.h"
 #include "libc/time/struct/timezone.h"
-#include "libc/time/time.h"
 
 /**
- * Returns system wall time in microseconds.
+ * Returns system wall time in microseconds, e.g.
  *
- * @param tv points to timeval that receives result if non-NULL
- * @param tz receives UTC timezone if non-NULL
- * @return always zero
- * @see	clock_gettime() for nanosecond precision
- * @see	strftime() for string formatting
+ *     int64_t t;
+ *     char p[20];
+ *     struct tm tm;
+ *     struct timeval tv;
+ *     gettimeofday(&tv, 0);
+ *     t = tv.tv_sec;
+ *     gmtime_r(&t, &tm);
+ *     iso8601(p, &tm);
+ *     printf("%s\n", p);
+ *
+ * @param tv points to timeval that receives result if non-null
+ * @param tz is completely ignored
+ * @return 0 on success, or -1 w/ errno
+ * @raise EFAULT if `tv` points to invalid memory
+ * @see clock_gettime() for nanosecond precision
+ * @see strftime() for string formatting
+ * @asyncsignalsafe
+ * @vforksafe
  */
 int gettimeofday(struct timeval *tv, struct timezone *tz) {
-  axdx_t ad;
-  if (!IsWindows() && !IsMetal()) {
-    ad = sys_gettimeofday(tv, tz, NULL);
-    assert(ad.ax != -1);
-    if (SupportsXnu() && ad.ax && tv) {
-      tv->tv_sec = ad.ax;
-      tv->tv_usec = ad.dx;
+  if (tv) {
+    struct timespec ts;
+    if (clock_gettime(CLOCK_REALTIME, &ts) != -1) {
+      tv->tv_sec = ts.tv_sec;
+      tv->tv_usec = (ts.tv_nsec + 999) / 1000;
+      return 0;
+    } else {
+      return -1;
     }
-    return 0;
-  } else if (IsMetal()) {
-    return enosys();
   } else {
-    return sys_gettimeofday_nt(tv, tz);
+    return 0;
   }
 }

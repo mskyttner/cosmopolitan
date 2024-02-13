@@ -1,5 +1,5 @@
 /*-*- mode:unix-assembly; indent-tabs-mode:t; tab-width:8; coding:utf-8     -*-│
-│vi: set et ft=asm ts=8 tw=8 fenc=utf-8                                     :vi│
+│ vi: set noet ft=asm ts=8 sw=8 fenc=utf-8                                 :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -17,24 +17,25 @@
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
 #include "libc/macros.internal.h"
-.source	__FILE__
 
 //	Decentralized section for test testcase registration.
 //
 //	@see	ape/ape.lds
-	.section .piro.relo.sort.testcase.1,"aw",@nobits
+	.section .piro.relo.sort.testcase.1,"aw",@progbits
 	.type	__testcase_start,@object
 	.type	__testcase_end,@object
 	.globl	__testcase_start,__testcase_end
 	.hidden	__testcase_start,__testcase_end
 	.byte	0
-	.align	__SIZEOF_POINTER__
+	.balign	__SIZEOF_POINTER__
+	.underrun
 __testcase_start:
 	.previous/*
 	...
 	decentralized content
 	...
-	*/.section .piro.relo.sort.testcase.3,"aw",@nobits
+	*/.section .piro.relo.sort.testcase.3,"aw",@progbits
 __testcase_end:
 	.quad	0
+	.overrun
 	.previous

@@ -1,6 +1,6 @@
 #ifndef COSMOPOLITAN_LIBC_INTRIN_REPSTOSB_H_
 #define COSMOPOLITAN_LIBC_INTRIN_REPSTOSB_H_
-#if !(__ASSEMBLER__ + __LINKER__ + 0)
+#ifdef _COSMO_SOURCE
 
 forceinline void *repstosb(void *dest, unsigned char al, size_t cx) {
   unsigned char *di = (unsigned char *)dest;
@@ -21,5 +21,5 @@ forceinline void *repstosb(void *dest, unsigned char al, size_t cx) {
   })
 #endif
 
-#endif /* !(__ASSEMBLER__ + __LINKER__ + 0) */
+#endif /* _COSMO_SOURCE */
 #endif /* COSMOPOLITAN_LIBC_INTRIN_REPSTOSB_H_ */

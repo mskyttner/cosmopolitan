@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -20,16 +20,14 @@
 #include "libc/calls/struct/timeval.h"
 #include "libc/dce.h"
 #include "libc/errno.h"
-#include "libc/mem/fmt.h"
 #include "libc/mem/mem.h"
+#include "libc/stdio/stdio.h"
 #include "libc/sysv/consts/clock.h"
 #include "libc/time/struct/tm.h"
 #include "libc/time/time.h"
 #include "libc/x/x.h"
 
-/**
- * @fileoverview Timestamps in One True Format w/o toil.
- */
+// TODO(jart): DELETE
 
 static char *xiso8601_impl(struct timespec *opt_ts, int sswidth) {
   char *p;
@@ -58,7 +56,7 @@ static char *xiso8601_impl(struct timespec *opt_ts, int sswidth) {
   localtime_r(&sec, &tm);
   strftime(timebuf, sizeof(timebuf), "%Y-%m-%dT%H:%M:%S", &tm);
   strftime(zonebuf, sizeof(zonebuf), "%z", &tm);
-  (asprintf)(&p, "%s.%0*ld%s", timebuf, sswidth, subsec, zonebuf);
+  asprintf(&p, "%s.%0*ld%s", timebuf, sswidth, subsec, zonebuf);
   return p;
 }
 

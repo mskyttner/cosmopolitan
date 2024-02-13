@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2021 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -19,25 +19,9 @@
 #include "libc/str/str.h"
 #include "net/http/http.h"
 
-// -_0-9A-Za-z
-static const char kHostChars[256] = {
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // 0x00
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // 0x10
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0,  // 0x20
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0,  // 0x30
-    0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,  // 0x40
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1,  // 0x50
-    0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,  // 0x60
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0,  // 0x70
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // 0x80
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // 0x90
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // 0xa0
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // 0xb0
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // 0xc0
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // 0xd0
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // 0xe0
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // 0xf0
-};
+#define DNS_NAME_MAX 253
+
+extern const char kHostChars[256];  // -_0-9A-Za-z
 
 /**
  * Returns true if host seems legit.
@@ -72,16 +56,18 @@ bool IsAcceptableHost(const char *s, size_t n) {
   int c, b, j;
   if (n == -1) n = s ? strlen(s) : 0;
   if (!n) return true;
+  if (n > DNS_NAME_MAX) {
+    return false;
+  }
   for (b = j = i = 0; i < n; ++i) {
     c = s[i] & 255;
     if (isdigit(c)) {
       b *= 10;
       b += c - '0';
-      if (b > 255) {
+    } else if (c == '.') {
+      if (!i || s[i - 1] == '.') {
         return false;
       }
-    } else if (c == '.') {
-      if (!i || s[i - 1] == '.') return false;
       b = 0;
       ++j;
     } else {
@@ -97,7 +83,11 @@ bool IsAcceptableHost(const char *s, size_t n) {
       }
     }
   }
-  if (j != 3) return false;
-  if (i && s[i - 1] == '.') return false;
+  if (j != 3) {
+    return false;
+  }
+  if (i && s[i - 1] == '.') {
+    return false;
+  }
   return true;
 }

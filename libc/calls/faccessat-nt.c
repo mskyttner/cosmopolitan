@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,12 +16,14 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/calls/internal.h"
-#include "libc/sysv/consts/at.h"
-#include "libc/sysv/errfuns.h"
+#include "libc/calls/syscall-nt.internal.h"
+#include "libc/calls/syscall_support-nt.internal.h"
+#include "libc/limits.h"
+#include "libc/str/str.h"
 
-int sys_faccessat_nt(int dirfd, const char *path, int mode, uint32_t flags) {
+textwindows int sys_faccessat_nt(int dirfd, const char *path, int mode,
+                                 uint32_t flags) {
   char16_t path16[PATH_MAX];
   if (__mkntpathat(dirfd, path, 0, path16) == -1) return -1;
-  return ntaccesscheck(path16, mode);
+  return __fix_enotdir(ntaccesscheck(path16, mode), path16);
 }

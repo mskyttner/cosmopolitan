@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=8 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=8 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,30 +16,39 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/bits/pushpop.h"
 #include "libc/calls/calls.h"
 #include "libc/dce.h"
 #include "libc/stdio/internal.h"
 #include "libc/stdio/stdio.h"
-
-STATIC_YOINK("_init_stdout");
+#include "libc/sysv/consts/fileno.h"
+#include "libc/sysv/consts/o.h"
+#include "libc/thread/thread.h"
 
 /**
  * Pointer to standard output stream.
  */
 FILE *stdout;
 
-hidden FILE __stdout;
-hidden unsigned char __stdout_buf[BUFSIZ];
+static FILE __stdout;
 
-static textstartup void __stdout_init() {
-  struct FILE *sf;
-  sf = stdout;
-  asm("" : "+r"(sf));
-  if (IsWindows() || ischardev(pushpop(sf->fd))) {
-    sf->bufmode = _IOLBF;
-  }
-  __fflush_register(sf);
+__attribute__((__constructor__)) static void __stdout_init(void) {
+  stdout = &__stdout;
+
+  stdout->fd = STDOUT_FILENO;
+  stdout->iomode = O_WRONLY;
+  stdout->buf = stdout->mem;
+  stdout->size = sizeof(stdout->mem);
+  stdout->lock._type = PTHREAD_MUTEX_RECURSIVE;
+
+  /*
+   * Unlike other C libraries we don't bother calling fstat() to check
+   * if stdio is a character device and we instead choose to always line
+   * buffer it. We need it because there's no way to use the unbuffer
+   * command on a statically linked binary. This still goes fast. We
+   * value latency more than throughput, and stdio isn't the best api
+   * when the goal is throughput.
+   */
+  stdout->bufmode = _IOLBF;
+
+  __fflush_register(stdout);
 }
-
-const void *const __stdout_ctor[] initarray = {__stdout_init};

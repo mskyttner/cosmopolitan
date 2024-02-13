@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -19,18 +19,19 @@
 #include "libc/calls/calls.h"
 #include "libc/log/log.h"
 #include "libc/mem/mem.h"
+#include "libc/stdio/dprintf.h"
 
-void memsummary(int fd) {
+void _memsummary(int fd) {
   struct mallinfo mi;
   mi = mallinfo();
-  (dprintf)(fd,
-            "arena\t\t%,-12zu\t# space allocated from system\n"
-            "ordblks\t\t%,-12zu\t# number of free chunks\n"
-            "hblkhd\t\t%,-12zu\t# space in mmapped regions\n"
-            "usmblks\t\t%,-12zu\t# maximum total allocated space\n"
-            "uordblks\t%,-12zu\t# total allocated space\n"
-            "fordblks\t%,-12zu\t# total free space\n"
-            "keepcost\t%,-12zu\t# releasable (via malloc_trim) space\n\n",
-            mi.arena, mi.ordblks, mi.hblkhd, mi.usmblks, mi.uordblks,
-            mi.fordblks, mi.keepcost);
+  dprintf(fd,
+          "arena\t\t%,-12zu\t# space allocated from system\n"
+          "ordblks\t\t%,-12zu\t# number of free chunks\n"
+          "hblkhd\t\t%,-12zu\t# space in mmapped regions\n"
+          "usmblks\t\t%,-12zu\t# maximum total allocated space\n"
+          "uordblks\t%,-12zu\t# total allocated space\n"
+          "fordblks\t%,-12zu\t# total free space\n"
+          "keepcost\t%,-12zu\t# releasable (via malloc_trim) space\n\n",
+          mi.arena, mi.ordblks, mi.hblkhd, mi.usmblks, mi.uordblks, mi.fordblks,
+          mi.keepcost);
 }

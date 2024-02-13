@@ -2,58 +2,35 @@
 #define COSMOPOLITAN_LIBC_CALLS_UCONTEXT_H_
 #include "libc/calls/struct/sigaltstack.h"
 #include "libc/calls/struct/sigset.h"
-#if !(__ASSEMBLER__ + __LINKER__ + 0)
 COSMOPOLITAN_C_START_
 
-#define REG_R8      REG_R8
-#define REG_R9      REG_R9
-#define REG_R10     REG_R10
-#define REG_R11     REG_R11
-#define REG_R12     REG_R12
-#define REG_R13     REG_R13
-#define REG_R14     REG_R14
-#define REG_R15     REG_R15
-#define REG_RDI     REG_RDI
-#define REG_RSI     REG_RSI
-#define REG_RBP     REG_RBP
-#define REG_RBX     REG_RBX
-#define REG_RDX     REG_RDX
-#define REG_RAX     REG_RAX
-#define REG_RCX     REG_RCX
-#define REG_RSP     REG_RSP
-#define REG_RIP     REG_RIP
-#define REG_EFL     REG_EFL
-#define REG_CSGSFS  REG_CSGSFS
-#define REG_ERR     REG_ERR
-#define REG_TRAPNO  REG_TRAPNO
-#define REG_OLDMASK REG_OLDMASK
-#define REG_CR2     REG_CR2
+#ifdef __x86_64__
 
-enum GeneralRegister {
-  REG_R8,
-  REG_R9,
-  REG_R10,
-  REG_R11,
-  REG_R12,
-  REG_R13,
-  REG_R14,
-  REG_R15,
-  REG_RDI,
-  REG_RSI,
-  REG_RBP,
-  REG_RBX,
-  REG_RDX,
-  REG_RAX,
-  REG_RCX,
-  REG_RSP,
-  REG_RIP,
-  REG_EFL,
-  REG_CSGSFS,
-  REG_ERR,
-  REG_TRAPNO,
-  REG_OLDMASK,
-  REG_CR2
-};
+#if defined(_GNU_SOURCE) || defined(_COSMO_SOURCE)
+#define REG_R8      0
+#define REG_R9      1
+#define REG_R10     2
+#define REG_R11     3
+#define REG_R12     4
+#define REG_R13     5
+#define REG_R14     6
+#define REG_R15     7
+#define REG_RDI     8
+#define REG_RSI     9
+#define REG_RBP     10
+#define REG_RBX     11
+#define REG_RDX     12
+#define REG_RAX     13
+#define REG_RCX     14
+#define REG_RSP     15
+#define REG_RIP     16
+#define REG_EFL     17
+#define REG_CSGSFS  18
+#define REG_ERR     19
+#define REG_TRAPNO  20
+#define REG_OLDMASK 21
+#define REG_CR2     22
+#endif
 
 struct XmmRegister {
   uint64_t u64[2];
@@ -79,31 +56,34 @@ struct thatispacked FpuState {
   uint32_t __padding[24];
 };
 
-typedef uint64_t greg_t;
+typedef long long greg_t;
 typedef greg_t gregset_t[23];
 typedef struct FpuState *fpregset_t;
 
-struct MachineContext {
+#endif /* __x86_64__ */
+
+struct sigcontext {
+#ifdef __x86_64__
   union {
     struct {
-      uint64_t r8;
-      uint64_t r9;
-      uint64_t r10;
-      uint64_t r11;
-      uint64_t r12;
-      uint64_t r13;
-      uint64_t r14;
-      uint64_t r15;
-      uint64_t rdi;
-      uint64_t rsi;
-      uint64_t rbp;
-      uint64_t rbx;
-      uint64_t rdx;
-      uint64_t rax;
-      uint64_t rcx;
-      uint64_t rsp;
-      uint64_t rip;
-      uint64_t eflags;
+      uint64_t r8;     /* 40 */
+      uint64_t r9;     /* 48 */
+      uint64_t r10;    /* 56 */
+      uint64_t r11;    /* 64 */
+      uint64_t r12;    /* 72 */
+      uint64_t r13;    /* 80 */
+      uint64_t r14;    /* 88 */
+      uint64_t r15;    /* 96 */
+      uint64_t rdi;    /* 104 */
+      uint64_t rsi;    /* 112 */
+      uint64_t rbp;    /* 120 */
+      uint64_t rbx;    /* 128 */
+      uint64_t rdx;    /* 136 */
+      uint64_t rax;    /* 144 */
+      uint64_t rcx;    /* 152 */
+      uint64_t rsp;    /* 160 */
+      uint64_t rip;    /* 168 */
+      uint64_t eflags; /* 176 */
       uint16_t cs;
       uint16_t gs;
       uint16_t fs;
@@ -115,23 +95,43 @@ struct MachineContext {
     };
     gregset_t gregs;
   };
-  struct FpuState *fpregs;
+  struct FpuState *fpregs; /* zero when no fpu context */
   uint64_t __pad1[8];
+#elif defined(__aarch64__)
+  uint64_t fault_address;
+  uint64_t regs[31];
+  uint64_t sp;
+  uint64_t pc;
+  uint64_t pstate;
+  uint8_t __reserved[4096] __attribute__((__aligned__(16)));
+#endif /* __x86_64__ */
 };
 
-typedef struct MachineContext mcontext_t;
+typedef struct sigcontext mcontext_t;
 
 struct ucontext {
-  uint64_t uc_flags;
+  uint64_t uc_flags; /* don't use this */
   struct ucontext *uc_link;
   stack_t uc_stack;
-  mcontext_t uc_mcontext; /* use this */
+#ifdef __x86_64__
+  struct sigcontext uc_mcontext;
   sigset_t uc_sigmask;
+  uint64_t __pad[2];
   struct FpuState __fpustate; /* for cosmo on non-linux */
-};
+#elif defined(__aarch64__)
+  sigset_t uc_sigmask;
+  uint8_t __unused[1024 / 8];
+  struct sigcontext uc_mcontext;
+#endif
+} forcealign(16);
 
 typedef struct ucontext ucontext_t;
 
+int getcontext(ucontext_t *) dontthrow;
+int setcontext(const ucontext_t *) dontthrow;
+int swapcontext(ucontext_t *, const ucontext_t *) dontthrow returnstwice;
+void makecontext(ucontext_t *, void *, int, ...) dontthrow dontcallback;
+void __sig_restore(const ucontext_t *) wontreturn;
+
 COSMOPOLITAN_C_END_
-#endif /* !(__ASSEMBLER__ + __LINKER__ + 0) */
 #endif /* COSMOPOLITAN_LIBC_CALLS_UCONTEXT_H_ */

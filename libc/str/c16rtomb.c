@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╚──────────────────────────────────────────────────────────────────────────────╝
 │                                                                              │
 │  Musl Libc                                                                   │
@@ -46,7 +46,7 @@ size_t c16rtomb(char *restrict s, char16_t c16, mbstate_t *restrict ps) {
     return 1;
   }
   if (!*x && c16 - 0xd800u < 0x400) {
-    *x = c16 - 0xd7c0 << 10;
+    *x = (c16 - 0xd7c0) << 10;
     return 0;
   }
   if (*x) {

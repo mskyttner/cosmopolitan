@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,8 +16,9 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/bits/safemacros.internal.h"
 #include "libc/calls/calls.h"
+#include "libc/intrin/safemacros.internal.h"
+#include "libc/limits.h"
 #include "libc/log/log.h"
 #include "libc/mem/mem.h"
 #include "libc/runtime/runtime.h"
@@ -57,5 +58,5 @@ const char *commandvenv(const char *var, const char *cmd) {
       return NULL;
     }
   }
-  return commandv(cmd, pathbuf);
+  return commandv(cmd, pathbuf, sizeof(pathbuf));
 }

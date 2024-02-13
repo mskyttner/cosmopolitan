@@ -1,12 +1,33 @@
-/*
-** $Id: lstate.c $
-** Global State
-** See Copyright Notice in lua.h
-*/
-
+/*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
+╚──────────────────────────────────────────────────────────────────────────────╝
+│                                                                              │
+│  Lua                                                                         │
+│  Copyright © 2004-2021 Lua.org, PUC-Rio.                                     │
+│                                                                              │
+│  Permission is hereby granted, free of charge, to any person obtaining       │
+│  a copy of this software and associated documentation files (the             │
+│  "Software"), to deal in the Software without restriction, including         │
+│  without limitation the rights to use, copy, modify, merge, publish,         │
+│  distribute, sublicense, and/or sell copies of the Software, and to          │
+│  permit persons to whom the Software is furnished to do so, subject to       │
+│  the following conditions:                                                   │
+│                                                                              │
+│  The above copyright notice and this permission notice shall be              │
+│  included in all copies or substantial portions of the Software.             │
+│                                                                              │
+│  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,             │
+│  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF          │
+│  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.      │
+│  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY        │
+│  CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,        │
+│  TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE           │
+│  SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                      │
+│                                                                              │
+╚─────────────────────────────────────────────────────────────────────────────*/
 #define lstate_c
 #define LUA_CORE
-
+#include "libc/str/str.h"
 #include "libc/time/time.h"
 #include "third_party/lua/lapi.h"
 #include "third_party/lua/ldebug.h"
@@ -22,7 +43,11 @@
 #include "third_party/lua/ltm.h"
 #include "third_party/lua/lua.h"
 
-/* clang-format off */
+asm(".ident\t\"\\n\\n\
+Lua 5.4.3 (MIT License)\\n\
+Copyright 1994–2021 Lua.org, PUC-Rio.\"");
+asm(".include \"libc/disclaimer.inc\"");
+
 
 /*
 ** thread state + extra space
@@ -165,7 +190,7 @@ void luaE_checkcstack (lua_State *L) {
 
 LUAI_FUNC void luaE_incCstack (lua_State *L) {
   L->nCcalls++;
-  if (unlikely(getCcalls(L) >= LUAI_MAXCCALLS))
+  if (l_unlikely(getCcalls(L) >= LUAI_MAXCCALLS))
     luaE_checkcstack(L);
 }
 
@@ -275,6 +300,16 @@ static void close_state (lua_State *L) {
 }
 
 
+/**
+ * lua_newthread [-0, +1, m]
+ *
+ * Creates a new thread, pushes it on the stack, and returns a pointer to a
+ * lua_State that represents this new thread. The new thread returned by this
+ * function shares with the original thread its global environment, but has
+ * an independent execution stack.
+ *
+ * Threads are subject to garbage collection, like any Lua object.
+ */
 LUA_API lua_State *lua_newthread (lua_State *L) {
   global_State *g;
   lua_State *L1;
@@ -372,6 +407,7 @@ LUA_API lua_State *lua_newstate (lua_Alloc f, void *ud) {
   g->panic = NULL;
   g->gcstate = GCSpause;
   g->gckind = KGC_INC;
+  g->gcstopem = 0;
   g->gcemergency = 0;
   g->finobj = g->tobefnz = g->fixedgc = NULL;
   g->firstold1 = g->survival = g->old1 = g->reallyold = NULL;

@@ -1,5 +1,5 @@
 /*-*- mode:unix-assembly; indent-tabs-mode:t; tab-width:8; coding:utf-8     -*-│
-│vi: set et ft=asm ts=8 tw=8 fenc=utf-8                                     :vi│
+│ vi: set noet ft=asm ts=8 sw=8 fenc=utf-8                                 :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -17,17 +17,17 @@
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
 #include "libc/macros.internal.h"
-.source	__FILE__
 .rodata
 
 //	Nontrivial NUL-terminated string test vector.
-	.align	1
+	.underrun
 kHyperion:
 0:	.incbin	"libc/testlib/hyperion.txt"
 1:	.byte	0
 	.endobj	kHyperion,globl
+	.overrun
 
-	.align	8
+	.balign	8
 kHyperionSize:
 	.quad	1b-0b
 	.endobj	kHyperionSize,globl

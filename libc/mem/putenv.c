@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,60 +16,92 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/alg/alg.h"
+#include "libc/intrin/getenv.internal.h"
+#include "libc/intrin/leaky.internal.h"
+#include "libc/intrin/strace.internal.h"
+#include "libc/macros.internal.h"
 #include "libc/mem/internal.h"
 #include "libc/mem/mem.h"
 #include "libc/runtime/runtime.h"
-#include "libc/str/str.h"
 #include "libc/sysv/errfuns.h"
 
-#define MAX_VARS 512
+static char **expected;
+static size_t capacity;
 
-static bool once;
-
-static void PutEnvInit(void) {
-  char **pin, **pout;
-  pin = environ;
-  pout = malloc(sizeof(char *) * MAX_VARS);
-  environ = pout;
-  while (*pin) *pout++ = strdup(*pin++);
-  *pout = NULL;
+static size_t __lenenv(char **env) {
+  char **p = env;
+  while (*p) ++p;
+  return p - env;
 }
 
-int PutEnvImpl(char *s, bool overwrite) {
-  char *p;
-  unsigned i, namelen;
-  if (!once) {
-    PutEnvInit();
-    once = true;
-  }
-  p = strchr(s, '=');
-  if (!p) goto fail;
-  namelen = p + 1 - s;
-  for (i = 0; environ[i]; ++i) {
-    if (!strncmp(environ[i], s, namelen)) {
-      if (!overwrite) {
-        free(s);
-        return 0;
+static char **__growenv(char **a) {
+  size_t n, c;
+  char **b, **p;
+  if (!a) a = environ;
+  n = a ? __lenenv(a) : 0;
+  c = MAX(8ul, n) << 1;
+  if ((b = malloc(c * sizeof(char *)))) {
+    if (a) {
+      for (p = b; *a;) {
+        *p++ = *a++;
       }
-      goto replace;
+    } else {
+      b[0] = 0;
+    }
+    environ = b;
+    expected = b;
+    capacity = c;
+    return b;
+  } else {
+    return 0;
+  }
+}
+
+IGNORE_LEAKS(__growenv)
+
+int __putenv(char *s, bool overwrite) {
+  char **p;
+  struct Env e;
+  if (!(p = environ)) {
+    if (!(p = __growenv(0))) {
+      return -1;
     }
   }
-  if (i + 1 >= MAX_VARS) goto fail;
-  environ[i + 1] = NULL;
-replace:
-  free(environ[i]);
-  environ[i] = s;
+  e = __getenv(p, s);
+  if (e.s && !overwrite) {
+    return 0;
+  }
+  if (e.s) {
+    p[e.i] = s;
+    return 0;
+  }
+  if (p != expected) {
+    capacity = e.i;
+  }
+  if (e.i + 1 >= capacity) {
+    if (!(p = __growenv(p))) {
+      return -1;
+    }
+  }
+  p[e.i + 1] = 0;
+  p[e.i] = s;
   return 0;
-fail:
-  free(s);
-  return einval();
 }
 
 /**
  * Emplaces environment key=value.
+ *
+ * @param s should be a string that looks like `"name=value"` and it'll
+ *     become part of the environment; changes to its memory will change
+ *     the environment too
+ * @return 0 on success, or non-zero w/ errno on error
+ * @raise ENOMEM if out of memory
  * @see setenv(), getenv()
+ * @threadunsafe
  */
-int putenv(char *string) {
-  return PutEnvImpl(strdup(string), true);
+int putenv(char *s) {
+  int rc;
+  rc = __putenv(s, true);
+  STRACE("putenv(%#s) → %d% m", s, rc);
+  return rc;
 }

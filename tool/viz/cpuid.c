@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,19 +16,21 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
+#include "libc/intrin/kprintf.h"
 #include "libc/log/color.internal.h"
-#include "libc/log/log.h"
+#include "libc/mem/gc.h"
 #include "libc/nexgen32e/cpuid4.internal.h"
 #include "libc/nexgen32e/nexgen32e.h"
 #include "libc/nexgen32e/rdtscp.h"
 #include "libc/nexgen32e/x86feature.h"
 #include "libc/nexgen32e/x86info.h"
-#include "libc/runtime/gc.internal.h"
+#include "libc/runtime/runtime.h"
 #include "libc/stdio/stdio.h"
 #include "libc/time/time.h"
-#include "libc/x/x.h"
+#include "libc/x/xasprintf.h"
 #include "tool/decode/lib/idname.h"
 #include "tool/decode/lib/x86idnames.h"
+#ifdef __x86_64__
 
 #define CANIUSE(FEATURE) caniuse(#FEATURE, X86_HAVE(FEATURE))
 #define SHOW(CONSTANT)   show(#CONSTANT, CONSTANT)
@@ -40,6 +42,10 @@ static void caniuse(const char *feature, bool present) {
 
 static void show(const char *constant, long value) {
   printf("%-20s%#lx\n", constant, value);
+}
+
+static void decimal(const char *a, long b, const char *c) {
+  printf("%-20s%ld%s\n", a, b, c);
 }
 
 static void showvendor(void) {
@@ -55,12 +61,6 @@ static void showmodel(void) {
   }
 }
 
-static void showspeed(void) {
-  if (KCPUIDS(16H, EAX)) {
-    printf(" %.1f%s", KCPUIDS(16H, EAX) / 1000.0, "ghz");
-  }
-}
-
 static void showstrata(void) {
   if (getx86processormodel(kX86ProcessorModelKey)) {
     printf(" (%s %s)",
@@ -73,12 +73,12 @@ static void showstrata(void) {
 void showcachesizes(void) {
   unsigned i;
   CPUID4_ITERATE(i, {
-    printf("%-19s%s%s %u-way %,7u byte cache w/%s %,5u sets of %u byte lines "
+    printf("%-19s%s%s %2u-way %,9u byte cache w/%s %,6u sets of %u byte lines "
            "shared across %u threads\n",
            gc(xasprintf("Level %u%s", CPUID4_CACHE_LEVEL,
-                        CPUID4_CACHE_TYPE == 1
-                            ? " data"
-                            : CPUID4_CACHE_TYPE == 2 ? " code" : "")),
+                        CPUID4_CACHE_TYPE == 1   ? " data"
+                        : CPUID4_CACHE_TYPE == 2 ? " code"
+                                                 : "")),
            CPUID4_IS_FULLY_ASSOCIATIVE ? " fully-associative" : "",
            CPUID4_COMPLEX_INDEXING ? " complexly-indexed" : "",
            CPUID4_WAYS_OF_ASSOCIATIVITY, CPUID4_CACHE_SIZE_IN_BYTES,
@@ -91,31 +91,47 @@ void showcachesizes(void) {
 }
 
 int main(int argc, char *argv[]) {
+  int x;
   long tsc_aux;
+  ShowCrashReports();
 
   showvendor();
   showmodel();
-  showspeed();
   showstrata();
   printf("\n");
 
+  if (KCPUIDS(16H, EAX)) {
+    printf("\n");
+    if ((x = KCPUIDS(16H, EAX) & 0x7fff)) decimal("frequency", x, "mhz");
+    if ((x = KCPUIDS(16H, EBX) & 0x7fff)) decimal("turbo", x, "mhz");
+    if ((x = KCPUIDS(16H, ECX) & 0x7fff)) decimal("bus", x, "mhz");
+  }
+
   if (X86_HAVE(HYPERVISOR)) {
-    unsigned eax, ebx, ecx, edx;
-    asm("push\t%%rbx\n\t"
-        "cpuid\n\t"
-        "mov\t%%ebx,%1\n\t"
+    int ax, cx;
+    char s[4 * 3 + 1];
+    asm("push\t%%rbx\r\n"
+        "cpuid\r\n"
+        "mov\t%%ebx,0+%2\r\n"
+        "mov\t%%ecx,4+%2\r\n"
+        "mov\t%%edx,8+%2\r\n"
+        "movb\t$0,12+%2\r\n"
         "pop\t%%rbx"
-        : "=a"(eax), "=rm"(ebx), "=c"(ecx), "=d"(edx)
-        : "0"(0x40000000), "2"(0));
-    printf("Running inside %.4s%.4s%.4s (eax=%#x)\n", &ebx, &ecx, &edx, eax);
+        : "=a"(ax), "=c"(cx), "=o"(s)
+        : "0"(0x40000000), "1"(0)
+        : "rdx");
+    kprintf("Running inside %s (eax=%#x)\n", s, ax);
   }
 
   printf("\n");
+  SHOW(kX86CpuFamily);
+  SHOW(kX86CpuModel);
+  printf("\n");
   SHOW(kX86CpuStepping);
-  SHOW(kX86CpuModelid);
-  SHOW(kX86CpuFamilyid);
   SHOW(kX86CpuType);
+  SHOW(kX86CpuModelid);
   SHOW(kX86CpuExtmodelid);
+  SHOW(kX86CpuFamilyid);
   SHOW(kX86CpuExtfamilyid);
 
   printf("\n");
@@ -158,6 +174,9 @@ int main(int argc, char *argv[]) {
              ? " (disabled by operating system)"
              : "");
 
+  CANIUSE(AVXVNNI);
+  CANIUSE(AVXVNNIINT8);
+  CANIUSE(AVXVNNIINT16);
   CANIUSE(AVX512BW);
   CANIUSE(AVX512CD);
   CANIUSE(AVX512DQ);
@@ -317,3 +336,10 @@ int main(int argc, char *argv[]) {
 
   return 0;
 }
+
+#else
+
+int main(int argc, char *argv[]) {
+}
+
+#endif /* __x86_64__ */

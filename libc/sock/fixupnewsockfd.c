@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,16 +16,11 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/calls/internal.h"
+#include "libc/calls/syscall_support-sysv.internal.h"
 #include "libc/sock/internal.h"
 #include "libc/sysv/consts/o.h"
 #include "libc/sysv/consts/sock.h"
 
-/**
- * Applies non-atomic file descriptor fixups on XNU or ancient Linux.
- *
- * @param fd of -1 means no-op
- */
 int __fixupnewsockfd(int fd, int flags) {
   return __fixupnewfd(fd, (((flags & SOCK_CLOEXEC) ? O_CLOEXEC : 0) |
                            ((flags & SOCK_NONBLOCK) ? O_NONBLOCK : 0)));

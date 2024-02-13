@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -20,10 +20,14 @@
 #include "net/http/http.h"
 
 /**
- * Returns small number for HTTP method, or 0 if not found.
+ * Converts HTTP method string into internal index
+ *
+ * @param len if -1 implies strlen
+ * @return small number for HTTP method, or 0 if not found.
  */
 int GetHttpMethod(const char *str, size_t len) {
   const struct HttpMethodSlot *slot;
+  if (len == -1) len = str ? strlen(str) : 0;
   if ((slot = LookupHttpMethod(str, len))) {
     return slot->code;
   } else {

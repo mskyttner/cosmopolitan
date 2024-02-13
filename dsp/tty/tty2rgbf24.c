@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -18,6 +18,6 @@
 ╚─────────────────────────────────────────────────────────────────────────────*/
 #include "dsp/tty/quant.h"
 
-__m128 tty2rgbf24_(struct TtyRgb rgbxt) {
-  return (__m128){(int)rgbxt.r, (int)rgbxt.g, (int)rgbxt.b} / 255;
+ttyrgb_m128 tty2rgbf24_(struct TtyRgb rgbxt) {
+  return (ttyrgb_m128){(int)rgbxt.r, (int)rgbxt.g, (int)rgbxt.b} / 255;
 }

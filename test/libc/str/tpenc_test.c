@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -17,14 +17,13 @@
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
 #include "libc/limits.h"
-#include "libc/rand/rand.h"
+#include "libc/stdio/rand.h"
 #include "libc/stdio/stdio.h"
 #include "libc/str/str.h"
-#include "libc/str/tpenc.h"
 #include "libc/testlib/ezbench.h"
 #include "libc/testlib/testlib.h"
 
-STATIC_YOINK("strwidth");
+__static_yoink("strwidth");
 
 volatile uint64_t v;
 
@@ -45,17 +44,17 @@ TEST(tpenc, testBeyondTheStandard) {
   ASSERT_EQ(0xBFBFBFBFBFFF, tpenc(-1));
 }
 
-uint64_t Tpenc(int x) {
-  return (v = EXPROPRIATE(tpenc(VEIL("r", x))));
+uint64_t tpenc_(int x) {
+  return (v = __expropriate(tpenc(__veil("r", x))));
 }
 
 BENCH(tpenc, bench) {
-  EZBENCH(donothing, Tpenc(0));
-  EZBENCH(donothing, Tpenc(1));
-  EZBENCH(donothing, Tpenc(' '));
-  EZBENCH(donothing, Tpenc(0x7f));
-  EZBENCH(donothing, Tpenc(L'▄'));
-  EZBENCH(donothing, Tpenc(-1));
-  EZBENCH(donothing, Tpenc(INT_MIN));
+  EZBENCH(donothing, tpenc_(0));
+  EZBENCH(donothing, tpenc_(1));
+  EZBENCH(donothing, tpenc_(' '));
+  EZBENCH(donothing, tpenc_(0x7f));
+  EZBENCH(donothing, tpenc_(L'▄'));
+  EZBENCH(donothing, tpenc_(-1));
+  EZBENCH(donothing, tpenc_(INT_MIN));
   fprintf(stderr, "\n");
 }

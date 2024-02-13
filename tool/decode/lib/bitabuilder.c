@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,15 +16,15 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
+#include "tool/decode/lib/bitabuilder.h"
 #include "libc/assert.h"
-#include "libc/bits/bits.h"
+#include "libc/limits.h"
 #include "libc/log/check.h"
 #include "libc/macros.internal.h"
 #include "libc/mem/mem.h"
 #include "libc/runtime/runtime.h"
 #include "libc/stdio/stdio.h"
 #include "libc/str/str.h"
-#include "tool/decode/lib/bitabuilder.h"
 
 /**
  * @fileoverview Sparse bit array builder.
@@ -32,7 +32,7 @@
 
 struct BitaBuilder {
   size_t i, n;
-  unsigned *p;
+  uint32_t *p;
 };
 
 struct BitaBuilder *bitabuilder_new(void) {
@@ -41,8 +41,9 @@ struct BitaBuilder *bitabuilder_new(void) {
 
 void bitabuilder_free(struct BitaBuilder **bbpp) {
   if (*bbpp) {
-    free_s(&(*bbpp)->p);
-    free_s(bbpp);
+    free((*bbpp)->p);
+    free(*bbpp);
+    *bbpp = 0;
   }
 }
 
@@ -58,7 +59,7 @@ bool bitabuilder_setbit(struct BitaBuilder *bb, size_t bit) {
   if (i > bb->n) {
     n = i + (i >> 2);
     if ((p2 = realloc(bb->p, n))) {
-      memset((char *)p2 + bb->n, 0, n - bb->n);
+      bzero((char *)p2 + bb->n, n - bb->n);
       bb->n = n;
       bb->p = p2;
     } else {
@@ -66,7 +67,7 @@ bool bitabuilder_setbit(struct BitaBuilder *bb, size_t bit) {
     }
   }
   bb->i = i;
-  bts(bb->p, bit);
+  bb->p[bit / 32] |= 1u << (bit % 32);
   return true;
 }
 

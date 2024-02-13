@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,20 +16,21 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/calls/internal.h"
-#include "libc/nt/enum/filemovemethod.h"
+#include "libc/assert.h"
+#include "libc/calls/syscall-nt.internal.h"
+#include "libc/calls/syscall_support-nt.internal.h"
+#include "libc/nt/enum/fileinfobyhandleclass.h"
+#include "libc/nt/errors.h"
 #include "libc/nt/files.h"
+#include "libc/nt/runtime.h"
 #include "libc/sysv/errfuns.h"
 
 textwindows int sys_ftruncate_nt(int64_t handle, uint64_t length) {
-  bool32 ok;
-  int64_t tell;
-  tell = -1;
-  if (SetFilePointerEx(handle, 0, &tell, kNtFileCurrent)) {
-    ok = SetFilePointerEx(handle, length, NULL, kNtFileBegin) &&
-         SetEndOfFile(handle);
-    SetFilePointerEx(handle, tell, NULL, kNtFileBegin);
-    return ok ? 0 : __winerr();
+  if (SetFileInformationByHandle(handle, kNtFileAllocationInfo, &length,
+                                 sizeof(length))) {
+    return 0;
+  } else if (GetLastError() == kNtErrorAccessDenied) {
+    return einval();  // ftruncate() doesn't raise EACCES
   } else {
     return __winerr();
   }

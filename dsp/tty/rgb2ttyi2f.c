@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -21,5 +21,5 @@
 #include "libc/macros.internal.h"
 
 struct TtyRgb rgb2ttyi2f_(int r, int g, int b) {
-  return rgb2ttyf((__m128){r, g, b} / 255);
+  return rgb2ttyf((ttyrgb_m128){r, g, b} / 255);
 }

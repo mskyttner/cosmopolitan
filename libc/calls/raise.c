@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -17,49 +17,46 @@
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
 #include "libc/calls/calls.h"
-#include "libc/calls/internal.h"
-#include "libc/nt/console.h"
-#include "libc/nt/enum/ctrlevent.h"
-#include "libc/nt/runtime.h"
-#include "libc/sysv/consts/sig.h"
-
-static textwindows uint32_t GetCtrlEvent(int sig) {
-  switch (sig) {
-    case SIGINT:
-      return kNtCtrlCEvent;
-    case SIGHUP:
-      return kNtCtrlCloseEvent;
-    case SIGQUIT:
-      return kNtCtrlBreakEvent;
-    default:
-      ExitProcess(128 + sig);
-  }
-}
+#include "libc/calls/sig.internal.h"
+#include "libc/calls/syscall-sysv.internal.h"
+#include "libc/dce.h"
+#include "libc/intrin/strace.internal.h"
+#include "libc/runtime/syslib.internal.h"
+#include "libc/sysv/consts/sicode.h"
+#include "libc/sysv/errfuns.h"
 
 /**
- * Sends signal to this process.
+ * Sends signal to self.
+ *
+ * This is basically the same as:
+ *
+ *     pthread_kill(pthread_self(), sig);
+ *
+ * Note `SIG_DFL` still results in process death for most signals.
+ *
+ * POSIX defines raise() errors as returning non-zero and makes setting
+ * `errno` optional. Every platform we've tested in our support vector
+ * returns -1 with `errno` on error (like a normal system call).
  *
  * @param sig can be SIGALRM, SIGINT, SIGTERM, SIGKILL, etc.
- * @return 0 on success or -1 w/ errno
+ * @return 0 on success, or -1 w/ errno
+ * @raise EINVAL if `sig` is invalid
  * @asyncsignalsafe
  */
 int raise(int sig) {
-  if (sig == SIGTRAP) {
-    DebugBreak();
-    return 0;
-  }
-  if (sig == SIGFPE) {
-    volatile int x = 0;
-    x = 1 / x;
-    return 0;
-  }
-  if (!IsWindows()) {
-    return sys_kill(getpid(), sig, 1);
-  } else {
-    if (GenerateConsoleCtrlEvent(GetCtrlEvent(sig), 0)) {
-      return 0;
+  int rc;
+  if (IsXnuSilicon()) {
+    rc = _sysret(__syslib->__raise(sig));
+  } else if (IsWindows()) {
+    if (0 <= sig && sig <= 64) {
+      __sig_raise(sig, SI_TKILL);
+      rc = 0;
     } else {
-      return __winerr();
+      rc = einval();
     }
+  } else {
+    rc = sys_tkill(gettid(), sig, 0);
   }
+  STRACE("raise(%G) → %d% m", sig, rc);
+  return rc;
 }

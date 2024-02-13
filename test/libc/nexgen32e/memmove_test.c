@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,10 +16,9 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/bits/bits.h"
 #include "libc/macros.internal.h"
 #include "libc/mem/mem.h"
-#include "libc/rand/rand.h"
+#include "libc/stdio/rand.h"
 #include "libc/str/str.h"
 #include "libc/testlib/testlib.h"
 
@@ -29,7 +28,7 @@
 long i, j, n;
 char *b0, *b1, *b2;
 
-noinline char *PosixMemmove(char *dst, const char *src, size_t n) {
+dontinline char *PosixMemmove(char *dst, const char *src, size_t n) {
   char *tmp;
   tmp = malloc(n);
   memcpy(tmp, src, n);
@@ -38,11 +37,11 @@ noinline char *PosixMemmove(char *dst, const char *src, size_t n) {
   return dst;
 }
 
-TEST(memmove, overlapping) {
+TEST(MemMove, overlapping) {
   for (i = 0; i < N; i += S) {
     for (j = 0; j < N; j += S) {
       for (n = MIN(N - i, N - j) + 1; n--;) {
-        b0 = rngset(malloc(N), N, rand64, -1);
+        b0 = rngset(malloc(N), N, _rand64, -1);
         b1 = memcpy(malloc(N), b0, N);
         b2 = memcpy(malloc(N), b0, N);
         ASSERT_EQ(b1 + j, memmove(b1 + j, b1 + i, n));
@@ -61,35 +60,12 @@ TEST(memmove, overlapping) {
   }
 }
 
-TEST(memmove$pure, overlapping) {
-  for (i = 0; i < N; i += S) {
-    for (j = 0; j < N; j += S) {
-      for (n = MIN(N - i, N - j) + 1; n--;) {
-        b0 = rngset(malloc(N), N, rand64, -1);
-        b1 = memcpy(malloc(N), b0, N);
-        b2 = memcpy(malloc(N), b0, N);
-        ASSERT_EQ(b1 + j, memmove_pure(b1 + j, b1 + i, n));
-        ASSERT_EQ(b2 + j, PosixMemmove(b2 + j, b2 + i, n));
-        ASSERT_EQ(0, memcmp(b1, b2, N),
-                  "j=%ld i=%ld n=%ld\n"
-                  "\t%#.*s data\n"
-                  "\t%#.*s memmove\n"
-                  "\t%#.*s posix",
-                  j, i, n, n, b0, n, b1, n, b2);
-        free(b2);
-        free(b1);
-        free(b0);
-      }
-    }
-  }
-}
-
-TEST(memcpy, overlapping) {
+TEST(MemCpy, overlapping) {
   for (i = 0; i < N; i += S) {
     for (j = 0; j < N; j += S) {
       for (n = MIN(N - i, N - j) + 1; n--;) {
         if (j <= i) {
-          b0 = rngset(malloc(N), N, rand64, -1);
+          b0 = rngset(malloc(N), N, _rand64, -1);
           b1 = memcpy(malloc(N), b0, N);
           b2 = memcpy(malloc(N), b0, N);
           ASSERT_EQ(b1 + j, memcpy(b1 + j, b1 + i, n));
@@ -109,11 +85,11 @@ TEST(memcpy, overlapping) {
   }
 }
 
-TEST(memmove, overlappingDirect) {
+TEST(MemMove, overlappingDirect) {
   for (i = 0; i < N; i += S) {
     for (j = 0; j < N; j += S) {
       for (n = MIN(N - i, N - j) + 1; n--;) {
-        b0 = rngset(malloc(N), N, rand64, -1);
+        b0 = rngset(malloc(N), N, _rand64, -1);
         b1 = memcpy(malloc(N), b0, N);
         b2 = memcpy(malloc(N), b0, N);
         ASSERT_EQ(b1 + j, (memmove)(b1 + j, b1 + i, n));

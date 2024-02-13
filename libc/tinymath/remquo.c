@@ -1,5 +1,5 @@
-/*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+/*-*- mode:c;indent-tabs-mode:t;c-basic-offset:8;tab-width:8;coding:utf-8   -*-│
+│ vi: set noet ft=c ts=8 sw=8 fenc=utf-8                                   :vi │
 ╚──────────────────────────────────────────────────────────────────────────────╝
 │                                                                              │
 │  Musl Libc                                                                   │
@@ -25,16 +25,17 @@
 │  SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                      │
 │                                                                              │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-
 #include "libc/math.h"
 
 asm(".ident\t\"\\n\\n\
 Musl libc (MIT License)\\n\
-Copyright 2005-2020 Rich Felker, et. al.\"");
+Copyright 2005-2014 Rich Felker, et. al.\"");
 asm(".include \"libc/disclaimer.inc\"");
+// clang-format off
 
-/* clang-format off */
-
+/**
+ * Computes remainder and part of quotient.
+ */
 double remquo(double x, double y, int *quo)
 {
 	union {double f; uint64_t i;} ux = {x}, uy = {y};
@@ -114,3 +115,7 @@ end:
 	*quo = sx^sy ? -(int)q : (int)q;
 	return sx ? -x : x;
 }
+
+#if LDBL_MANT_DIG == 53 && LDBL_MAX_EXP == 1024
+__weak_reference(remquo, remquol);
+#endif

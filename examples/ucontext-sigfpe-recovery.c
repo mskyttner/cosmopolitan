@@ -15,13 +15,25 @@
 #include "libc/sysv/consts/sa.h"
 #include "libc/sysv/consts/sig.h"
 #include "third_party/xed/x86.h"
+#ifdef __x86_64__
 
-void handler(int sig, siginfo_t *si, ucontext_t *ctx) {
+/**
+ * @fileoverview How to change CPU state on signal delivery
+ *
+ * This program redefines division by zero so that it has a definition.
+ * The definition is the meaning of life, the universe, and everything.
+ * Normally crash signals like `SIGSEGV`, `SIGILL`, and `SIGFPE` aren't
+ * recoverable. This example shows how it actually can be done with Xed
+ * and this example should work on all supported platforms even Windows
+ */
+
+void handler(int sig, siginfo_t *si, void *vctx) {
   struct XedDecodedInst xedd;
+  struct ucontext *ctx = vctx;
   xed_decoded_inst_zero_set_mode(&xedd, XED_MACHINE_MODE_LONG_64);
   xed_instruction_length_decode(&xedd, (void *)ctx->uc_mcontext.rip, 15);
   ctx->uc_mcontext.rip += xedd.length;
-  ctx->uc_mcontext.rax = 42;
+  ctx->uc_mcontext.rax = 42;  // set the DIV result registers rdx:rax
   ctx->uc_mcontext.rdx = 0;
 }
 
@@ -32,3 +44,5 @@ int main(int argc, char *argv[]) {
   printf("123/0 = %ld\n", 123 / x);
   return 0;
 }
+
+#endif /* __x86_64__ */

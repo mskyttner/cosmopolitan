@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,8 +16,8 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/assert.h"
 #include "libc/intrin/palignr.h"
+#include "libc/assert.h"
 #include "libc/macros.internal.h"
 
 /**
@@ -36,8 +36,8 @@
  */
 void(palignr)(void *c, const void *b, const void *a, unsigned long i) {
   char t[48];
-  memcpy(t, a, 16);
-  memcpy(t + 16, b, 16);
-  memset(t + 32, 0, 16);
-  memcpy(c, t + MIN(i, 32), 16);
+  __builtin_memcpy(t, a, 16);
+  __builtin_memcpy(t + 16, b, 16);
+  __builtin_memset(t + 32, 0, 16);
+  __builtin_memcpy(c, t + MIN(i, 32), 16);
 }

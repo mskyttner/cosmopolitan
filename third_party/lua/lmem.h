@@ -1,16 +1,9 @@
-/*
-** $Id: lmem.h $
-** Interface to Memory Manager
-** See Copyright Notice in lua.h
-*/
-
 #ifndef lmem_h
 #define lmem_h
 
 #include "third_party/lua/llimits.h"
 #include "third_party/lua/lua.h"
 
-/* clang-format off */
 
 #define luaM_error(L)	luaD_throw(L, LUA_ERRMEM)
 

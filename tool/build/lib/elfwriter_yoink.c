@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,17 +16,19 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
+#include "libc/elf/def.h"
 #include "libc/str/str.h"
 #include "tool/build/lib/elfwriter.h"
 
-void elfwriter_yoink(struct ElfWriter *elf, const char *symbol) {
+void elfwriter_yoink(struct ElfWriter *elf, const char *symbol, int stb) {
   unsigned char *p;
   struct ElfWriterSymRef sym;
   const unsigned char kNopl[8] = "\017\037\004\045\000\000\000\000";
   p = elfwriter_reserve(elf, 8);
   memcpy(p, kNopl, sizeof(kNopl));
-  sym = elfwriter_linksym(elf, symbol, ELF64_ST_INFO(STB_GLOBAL, STT_OBJECT),
+  sym = elfwriter_linksym(elf, symbol, ELF64_ST_INFO(stb, STT_OBJECT),
                           STV_HIDDEN);
-  elfwriter_appendrela(elf, sizeof(kNopl) - 4, sym, R_X86_64_32, 0);
+  elfwriter_appendrela(elf, sizeof(kNopl) - 4, sym,
+                       elfwriter_relatype_abs32(elf), 0);
   elfwriter_commit(elf, sizeof(kNopl));
 }

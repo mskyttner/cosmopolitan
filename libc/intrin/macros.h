@@ -2,18 +2,18 @@
 #define COSMOPOLITAN_LIBC_INTRIN_MACROS_H_
 #include "libc/dce.h"
 #include "libc/nexgen32e/x86feature.h"
-#if !(__ASSEMBLER__ + __LINKER__ + 0)
 
 #define INTRIN_COMMUTATIVE "%"
 #define INTRIN_NONCOMMUTATIVE
 
 #if defined(__x86_64__) && !defined(__STRICT_ANSI__)
 
-typedef char __intrin_xmm_t _Vector_size(16) forcealign(16) mayalias;
+typedef char __intrin_xmm_t
+    __attribute__((__vector_size__(16), __aligned__(16), __may_alias__));
 
 #define INTRIN_SSEVEX_X_X_X_(PURE, ISA, OP, FLAGS, A, B, C)                    \
   do {                                                                         \
-    if (!IsModeDbg() && X86_HAVE(ISA)) {                                       \
+    if (X86_HAVE(ISA)) {                                                       \
       __intrin_xmm_t *Xmm0 = (void *)(A);                                      \
       const __intrin_xmm_t *Xmm1 = (const __intrin_xmm_t *)(B);                \
       const __intrin_xmm_t *Xmm2 = (const __intrin_xmm_t *)(C);                \
@@ -29,7 +29,7 @@ typedef char __intrin_xmm_t _Vector_size(16) forcealign(16) mayalias;
 
 #define INTRIN_SSEVEX_X_X_I_(PURE, ISA, OP, A, B, I)                 \
   do {                                                               \
-    if (!IsModeDbg() && X86_HAVE(ISA)) {                             \
+    if (X86_HAVE(ISA)) {                                             \
       __intrin_xmm_t *Xmm0 = (void *)(A);                            \
       const __intrin_xmm_t *Xmm1 = (const __intrin_xmm_t *)(B);      \
       if (!X86_NEED(AVX)) {                                          \
@@ -44,7 +44,7 @@ typedef char __intrin_xmm_t _Vector_size(16) forcealign(16) mayalias;
 
 #define INTRIN_SSEVEX_X_X_(PURE, ISA, OP, A, B)                 \
   do {                                                          \
-    if (!IsModeDbg() && X86_HAVE(ISA)) {                        \
+    if (X86_HAVE(ISA)) {                                        \
       __intrin_xmm_t *Xmm0 = (void *)(A);                       \
       const __intrin_xmm_t *Xmm1 = (const __intrin_xmm_t *)(B); \
       if (!X86_NEED(AVX)) {                                     \
@@ -76,7 +76,7 @@ typedef char __intrin_xmm_t _Vector_size(16) forcealign(16) mayalias;
 #define INTRIN_SSEVEX_X_X_X_(PURE, ISA, OP, FLAGS, A, B, C) PURE(A, B, C)
 #define INTRIN_SSEVEX_X_X_I_(PURE, ISA, OP, A, B, I)        PURE(A, B, I)
 #define INTRIN_SSEVEX_X_I_(PURE, ISA, OP, A, B, I)          PURE(A, B, I)
+#define INTRIN_SSEVEX_X_X_(PURE, ISA, OP, A, B)             PURE(A, B)
 #endif /* X86 && !ANSI */
 
-#endif /* !(__ASSEMBLER__ + __LINKER__ + 0) */
 #endif /* COSMOPOLITAN_LIBC_INTRIN_MACROS_H_ */

@@ -1,4 +1,3 @@
-/* clang-format off */
 /*
 LZ4 auto-framing library
 Copyright (C) 2011-2016, Yann Collet.
@@ -67,6 +66,7 @@ You can contact the author at :
 #define ALLOC(s)   malloc(s)
 #define ALLOC_AND_ZERO(s)   calloc(1,s)
 #define FREEMEM        free
+#include "libc/assert.h"
 #include "libc/str/str.h"   /* memset, memcpy, memmove */
 #define MEM_INIT       memset
 
@@ -83,17 +83,6 @@ You can contact the author at :
 #define XXH_STATIC_LINKING_ONLY
 #include "third_party/lz4cli/xxhash.h"
 
-
-/*-************************************
-*  Debug
-**************************************/
-#if defined(LZ4_DEBUG) && (LZ4_DEBUG>=1)
-#  include "libc/runtime/runtime.h"
-#else
-#  ifndef assert
-#    define assert(condition) ((void)0)
-#  endif
-#endif
 
 #define LZ4F_STATIC_ASSERT(c)    { enum { LZ4F_static_assert = 1/(int)(!!(c)) }; }   /* use only *after* variable declarations */
 

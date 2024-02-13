@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -17,7 +17,6 @@
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
 #include "libc/calls/calls.h"
-#include "libc/calls/internal.h"
 #include "libc/sysv/consts/at.h"
 
 /**
@@ -31,5 +30,5 @@
  * @see /etc/group for group ids
  */
 int lchown(const char *pathname, uint32_t uid, uint32_t gid) {
-  return sys_fchownat(AT_FDCWD, pathname, uid, gid, AT_SYMLINK_NOFOLLOW);
+  return fchownat(AT_FDCWD, pathname, uid, gid, AT_SYMLINK_NOFOLLOW);
 }

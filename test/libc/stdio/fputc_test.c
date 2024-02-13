@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2021 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -17,12 +17,18 @@
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
 #include "libc/calls/calls.h"
+#include "libc/runtime/internal.h"
 #include "libc/stdio/stdio.h"
+#include "libc/str/str.h"
+#include "libc/testlib/ezbench.h"
 #include "libc/testlib/testlib.h"
 
 FILE *f;
 char buf[512];
-char testlib_enable_tmp_setup_teardown;
+
+void SetUpOnce(void) {
+  testlib_enable_tmp_setup_teardown();
+}
 
 TEST(fputc, test) {
   ASSERT_NE(NULL, (f = fopen("hog", "w+")));
@@ -59,4 +65,16 @@ TEST(fgetc, testUnbuffered) {
   EXPECT_TRUE(!memcmp(buf, "h\377", 2));
   EXPECT_TRUE(feof(f));
   EXPECT_NE(-1, fclose(f));
+}
+
+BENCH(fputc, bench) {
+  FILE *f;
+  ASSERT_NE(NULL, (f = fopen("/dev/null", "w")));
+  EZBENCH2("fputc", donothing, fputc('E', f));
+  flockfile(f);
+  flockfile(f);
+  EZBENCH2("fputc_unlocked", donothing, fputc_unlocked('E', f));
+  funlockfile(f);
+  funlockfile(f);
+  fclose(f);
 }

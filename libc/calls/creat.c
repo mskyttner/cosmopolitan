@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -21,20 +21,21 @@
 #include "libc/sysv/consts/o.h"
 
 /**
- * Creates new file, returning open()'d file descriptor.
+ * Creates file.
  *
- * This function is shorthand for:
+ * This is equivalent to saying:
  *
- *     open(file, O_CREAT | O_WRONLY | O_TRUNC, mode)
+ *     int fd = openat(AT_FDCWD, file, O_CREAT | O_WRONLY | O_TRUNC, mode);
  *
- * @param file is a UTF-8 string, which is truncated if it exists
- * @param mode is an octal user/group/other permission, e.g. 0755
- * @return a number registered with the system to track the open file,
- *     which must be stored using a 64-bit type in order to support both
- *     System V and Windows, and must be closed later on using close()
- * @see open(), touch()
+ * @param file specifies filesystem path to create
+ * @param mode is octal bits, e.g. 0644 usually
+ * @return file descriptor, or -1 w/ errno
+ * @see openat() for further documentation
+ * @cancelationpoint
  * @asyncsignalsafe
+ * @restartable
+ * @vforksafe
  */
-nodiscard int creat(const char *file, uint32_t mode) {
+int creat(const char *file, uint32_t mode) {
   return openat(AT_FDCWD, file, O_CREAT | O_WRONLY | O_TRUNC, mode);
 }

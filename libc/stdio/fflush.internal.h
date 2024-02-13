@@ -1,7 +1,8 @@
 #ifndef COSMOPOLITAN_LIBC_STDIO_FFLUSH_H_
 #define COSMOPOLITAN_LIBC_STDIO_FFLUSH_H_
 #include "libc/stdio/stdio.h"
-#if !(__ASSEMBLER__ + __LINKER__ + 0)
+#include "libc/thread/thread.h"
+#include "libc/thread/tls.h"
 COSMOPOLITAN_C_START_
 
 struct StdioFlushHandles {
@@ -14,8 +15,11 @@ struct StdioFlush {
   FILE *handles_initmem[8];
 };
 
-extern struct StdioFlush __fflush hidden;
+extern struct StdioFlush __fflush;
+extern pthread_mutex_t __fflush_lock_obj;
+
+void __fflush_lock(void);
+void __fflush_unlock(void);
 
 COSMOPOLITAN_C_END_
-#endif /* !(__ASSEMBLER__ + __LINKER__ + 0) */
 #endif /* COSMOPOLITAN_LIBC_STDIO_FFLUSH_H_ */

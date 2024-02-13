@@ -1,23 +1,48 @@
-/*
-** $Id: liolib.c $
-** Standard I/O (and system) library
-** See Copyright Notice in lua.h
-*/
-
+/*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
+╚──────────────────────────────────────────────────────────────────────────────╝
+│                                                                              │
+│  Lua                                                                         │
+│  Copyright © 2004-2021 Lua.org, PUC-Rio.                                     │
+│                                                                              │
+│  Permission is hereby granted, free of charge, to any person obtaining       │
+│  a copy of this software and associated documentation files (the             │
+│  "Software"), to deal in the Software without restriction, including         │
+│  without limitation the rights to use, copy, modify, merge, publish,         │
+│  distribute, sublicense, and/or sell copies of the Software, and to          │
+│  permit persons to whom the Software is furnished to do so, subject to       │
+│  the following conditions:                                                   │
+│                                                                              │
+│  The above copyright notice and this permission notice shall be              │
+│  included in all copies or substantial portions of the Software.             │
+│                                                                              │
+│  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,             │
+│  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF          │
+│  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.      │
+│  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY        │
+│  CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,        │
+│  TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE           │
+│  SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                      │
+│                                                                              │
+╚─────────────────────────────────────────────────────────────────────────────*/
 #define liolib_c
 #define LUA_LIB
-
 #include "libc/calls/calls.h"
 #include "libc/calls/weirdtypes.h"
 #include "libc/errno.h"
-#include "libc/stdio/temp.h"
-#include "libc/stdio/unlocked.h"
+#include "libc/stdio/stdio.h"
+#include "libc/temp.h"
+#include "libc/str/str.h"
 #include "third_party/lua/lauxlib.h"
 #include "third_party/lua/lprefix.h"
 #include "third_party/lua/lua.h"
 #include "third_party/lua/lualib.h"
 
-/* clang-format off */
+asm(".ident\t\"\\n\\n\
+Lua 5.4.3 (MIT License)\\n\
+Copyright 1994–2021 Lua.org, PUC-Rio.\"");
+asm(".include \"libc/disclaimer.inc\"");
+
 
 /*
 ** Change this macro to accept other modes for 'fopen' besides
@@ -178,7 +203,7 @@ static int f_tostring (lua_State *L) {
 
 static FILE *tofile (lua_State *L) {
   LStream *p = tolstream(L);
-  if (isclosed(p))
+  if (l_unlikely(isclosed(p)))
     luaL_error(L, "attempt to use a closed file");
   lua_assert(p->f);
   return p->f;
@@ -253,7 +278,7 @@ static LStream *newfile (lua_State *L) {
 static void opencheck (lua_State *L, const char *fname, const char *mode) {
   LStream *p = newfile(L);
   p->f = fopen(fname, mode);
-  if (p->f == NULL)
+  if (l_unlikely(p->f == NULL))
     luaL_error(L, "cannot open file '%s' (%s)", fname, strerror(errno));
 }
 
@@ -301,7 +326,7 @@ static FILE *getiofile (lua_State *L, const char *findex) {
   LStream *p;
   lua_getfield(L, LUA_REGISTRYINDEX, findex);
   p = (LStream *)lua_touserdata(L, -1);
-  if (isclosed(p))
+  if (l_unlikely(isclosed(p)))
     luaL_error(L, "default %s file is closed", findex + IOPREF_LEN);
   return p->f;
 }
@@ -428,7 +453,7 @@ typedef struct {
 ** Add current char to buffer (if not out of space) and read next one
 */
 static int nextc (RN *rn) {
-  if (rn->n >= L_MAXLENNUM) {  /* buffer overflow? */
+  if (l_unlikely(rn->n >= L_MAXLENNUM)) {  /* buffer overflow? */
     rn->buff[0] = '\0';  /* invalidate result */
     return 0;  /* fail */
   }
@@ -491,8 +516,8 @@ static int read_number (lua_State *L, FILE *f) {
   ungetc(rn.c, rn.f);  /* unread look-ahead char */
   l_unlockfile(rn.f);
   rn.buff[rn.n] = '\0';  /* finish string */
-  if (lua_stringtonumber(L, rn.buff))  /* is this a valid number? */
-    return 1;  /* ok */
+  if (l_likely(lua_stringtonumber(L, rn.buff)))
+    return 1;  /* ok, it is a valid number */
   else {  /* invalid format */
    lua_pushnil(L);  /* "result" to be removed */
    return 0;  /* read fails */
@@ -668,7 +693,8 @@ static int g_write (lua_State *L, FILE *f, int arg) {
       status = status && (fwrite(s, sizeof(char), l, f) == l);
     }
   }
-  if (status) return 1;  /* file handle already on stack top */
+  if (l_likely(status))
+    return 1;  /* file handle already on stack top */
   else return luaL_fileresult(L, status, NULL);
 }
 
@@ -695,7 +721,7 @@ static int f_seek (lua_State *L) {
   luaL_argcheck(L, (lua_Integer)offset == p3, 3,
                   "not an integer in proper range");
   op = l_fseek(f, offset, mode[op]);
-  if (op)
+  if (l_unlikely(op))
     return luaL_fileresult(L, 0, NULL);  /* error */
   else {
     lua_pushinteger(L, (lua_Integer)l_ftell(f));

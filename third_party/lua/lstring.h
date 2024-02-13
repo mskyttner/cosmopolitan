@@ -1,9 +1,3 @@
-/*
-** $Id: lstring.h $
-** String table (keep all strings handled by Lua)
-** See Copyright Notice in lua.h
-*/
-
 #ifndef lstring_h
 #define lstring_h
 
@@ -11,7 +5,6 @@
 #include "third_party/lua/lobject.h"
 #include "third_party/lua/lstate.h"
 
-/* clang-format off */
 
 /*
 ** Memory-allocation error message must be preallocated (it cannot

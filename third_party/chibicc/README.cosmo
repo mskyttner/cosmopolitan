@@ -6,12 +6,13 @@ which is great, considering it's a 220kb αcτµαlly pδrταblε εxεcµταb
 
 local enhancements
 
+- add assembler
 - support dce
 - support gnu asm
 - support __int128
 - support _Static_assert
 - support __vector_size__
-- support __builtin_add_overflow, etc.
+- support GCC C11 __atomic_* primitives
 - support __builtin_memcpy, strlen, strpbrk, etc.
 - support __builtin_constant_p, __builtin_likely, etc.
 - support __builtin_isunordered, __builtin_islessgreater, etc.
@@ -24,6 +25,7 @@ local enhancements
 - reduce #lines of generated assembly by a third
 - reduce #bytes of generated binary by a third
 - report divide errors in constexprs
+- use perfect hash table for keywords
 
 local bug fixes
 

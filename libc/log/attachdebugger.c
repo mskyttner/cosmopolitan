@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,10 +16,14 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/bits/safemacros.internal.h"
 #include "libc/calls/calls.h"
-#include "libc/fmt/fmt.h"
+#include "libc/calls/syscall-sysv.internal.h"
+#include "libc/dce.h"
+#include "libc/fmt/itoa.h"
+#include "libc/intrin/safemacros.internal.h"
+#include "libc/log/color.internal.h"
 #include "libc/log/gdb.h"
+#include "libc/log/internal.h"
 #include "libc/log/log.h"
 #include "libc/nexgen32e/stackframe.h"
 #include "libc/nexgen32e/vendor.internal.h"
@@ -28,11 +32,11 @@
 #include "libc/runtime/symbols.internal.h"
 #include "libc/stdio/stdio.h"
 #include "libc/str/str.h"
+#include "libc/sysv/consts/at.h"
 #include "libc/sysv/consts/fileno.h"
 #include "libc/sysv/consts/o.h"
 #include "libc/sysv/consts/w.h"
-
-#define RESTORE_TTY "\e[?1000;1002;1015;1006l\e[?25h"
+#include "libc/sysv/errfuns.h"
 
 /**
  * Launches GDB debugger GUI for current process.
@@ -41,7 +45,7 @@
  * possible UX for debugging your app, for varying levels of available
  * information, on most of the various platforms.
  *
- * Before calling this function, consider placing showcrashreports() in
+ * Before calling this function, consider placing ShowCrashReports() in
  * your main function and calling DebugBreak() wherever you want; it's
  * safer. Also note the "GDB" environment variable can be set to empty
  * string, as a fail-safe for disabling this behavior.
@@ -50,17 +54,21 @@
  * @return gdb pid if continuing, 0 if detached, or -1 w/ errno
  * @note this is called via eponymous spinlock macro wrapper
  */
-relegated int(attachdebugger)(intptr_t continuetoaddr) {
+relegated int(AttachDebugger)(intptr_t continuetoaddr) {
   int pid, ttyfd;
   struct StackFrame *bp;
-  char pidstr[11], breakcmd[40];
+  char pidstr[12], breakcmd[40];
   const char *se, *elf, *gdb, *rewind, *layout;
-  if (IsGenuineCosmo() || !(gdb = GetGdbPath()) ||
-      (ttyfd = open(_PATH_TTY, O_RDWR | O_CLOEXEC)) == -1) {
-    return -1;
+  __restore_tty();
+  if (!IsLinux() ||             //
+      IsGenuineBlink() ||       //
+      !(gdb = GetGdbPath()) ||  //
+      !isatty(0) ||             //
+      !isatty(1) ||             //
+      (ttyfd = sys_openat(AT_FDCWD, _PATH_TTY, O_RDWR | O_CLOEXEC, 0)) == -1) {
+    return enosys();
   }
-  write(ttyfd, RESTORE_TTY, strlen(RESTORE_TTY));
-  snprintf(pidstr, sizeof(pidstr), "%u", getpid());
+  FormatUint32(pidstr, getpid());
   layout = "layout asm";
   if ((elf = FindDebugBinary())) {
     se = "-se";
@@ -75,28 +83,30 @@ relegated int(attachdebugger)(intptr_t continuetoaddr) {
       continuetoaddr = bp->addr;
     }
     rewind = "-ex";
-    snprintf(breakcmd, sizeof(breakcmd), "%s *%#p", "break", continuetoaddr);
+    FormatHex64(stpcpy(breakcmd, "break *"), continuetoaddr, 1);
   } else {
     rewind = NULL;
     breakcmd[0] = '\0';
   }
-  if (!(pid = vfork())) {
-    dup2(ttyfd, 0);
-    dup2(ttyfd, 1);
-    execv(gdb, (char *const[]){
-                   "gdb",    "--tui",
-                   "-p",     pidstr,
-                   se,       elf,
-                   "-ex",    "set osabi GNU/Linux",
-                   "-ex",    "set complaints 0",
-                   "-ex",    "set confirm off",
-                   "-ex",    layout,
-                   "-ex",    "layout reg",
-                   "-ex",    "set var g_gdbsync = 1",
-                   "-q",     rewind,
-                   breakcmd, "-ex",
-                   "c",      NULL,
-               });
+  if (!(pid = fork())) {
+    sys_dup2(ttyfd, 0, 0);
+    sys_dup2(ttyfd, 1, 0);
+    __sys_execve(gdb,
+                 (char *const[]){
+                     "gdb",      "--tui",
+                     "-p",       pidstr,
+                     (char *)se, (char *)elf,
+                     "-ex",      "set osabi GNU/Linux",
+                     "-ex",      "set complaints 0",
+                     "-ex",      "set confirm off",
+                     "-ex",      (char *)layout,
+                     "-ex",      "layout reg",
+                     "-ex",      "set var g_gdbsync = 1",
+                     "-q",       (char *)rewind,
+                     breakcmd,   "-ex",
+                     "c",        NULL,
+                 },
+                 environ);
     abort();
   }
   return pid;

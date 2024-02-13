@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╚──────────────────────────────────────────────────────────────────────────────╝
 │                                                                              │
 │  Musl Libc                                                                   │
@@ -64,7 +64,7 @@ size_t mbrtowc(wchar_t *wc, const char *src, size_t n, mbstate_t *st) {
   if (n) {
     if (OOB(c, *s)) goto ilseq;
   loop:
-    c = c << 6 | *s++ - 0x80;
+    c = c << 6 | (*s++ - 0x80);
     n--;
     if (!(c & (1U << 31))) {
       *(unsigned *)st = 0;

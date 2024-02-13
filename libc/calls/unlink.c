@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -20,12 +20,11 @@
 #include "libc/sysv/consts/at.h"
 
 /**
- * Deletes file.
+ * Removes file.
  *
- * Please note the deletion process has different interesting properties
- * on each platform. For example, on System V, if open descriptors exist
- * then only the name of the file is removed and it's actually deleted
- * later on when appropriate.
+ * This may be used to delete files but it can't be used to delete
+ * directories. The exception are symlinks, which this will delete
+ * however not the linked directory.
  *
  * @return 0 on success, or -1 w/ errno
  * @asyncsignalsafe

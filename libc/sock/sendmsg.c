@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -17,11 +17,22 @@
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
 #include "libc/assert.h"
+#include "libc/calls/cp.internal.h"
 #include "libc/calls/internal.h"
+#include "libc/calls/struct/fd.internal.h"
 #include "libc/calls/struct/iovec.h"
+#include "libc/calls/struct/iovec.internal.h"
 #include "libc/dce.h"
+#include "libc/intrin/asan.internal.h"
+#include "libc/intrin/describeflags.internal.h"
+#include "libc/intrin/kprintf.h"
+#include "libc/intrin/strace.internal.h"
+#include "libc/runtime/runtime.h"
 #include "libc/sock/internal.h"
 #include "libc/sock/sock.h"
+#include "libc/sock/struct/msghdr.h"
+#include "libc/sock/struct/msghdr.internal.h"
+#include "libc/sock/struct/sockaddr.internal.h"
 #include "libc/str/str.h"
 #include "libc/sysv/errfuns.h"
 
@@ -35,38 +46,66 @@
  * @return number of bytes transmitted, or -1 w/ errno
  * @error EINTR, EHOSTUNREACH, ECONNRESET (UDP ICMP Port Unreachable),
  *     EPIPE (if MSG_NOSIGNAL), EMSGSIZE, ENOTSOCK, EFAULT, etc.
+ * @cancelationpoint
  * @asyncsignalsafe
+ * @restartable (unless SO_RCVTIMEO)
  */
 ssize_t sendmsg(int fd, const struct msghdr *msg, int flags) {
-  if (!IsWindows()) {
-    if (IsBsd() && msg->msg_name) {
-      /* An optional address is provided, convert it to the BSD form */
-      char addr2[128];
-      struct msghdr msg2;
-      if (msg->msg_namelen > sizeof(addr2)) return einval();
-      memcpy(&addr2[0], msg->msg_name, msg->msg_namelen);
-      sockaddr2bsd(&addr2[0]);
+  int64_t rc;
+  struct msghdr msg2;
+  union sockaddr_storage_bsd bsd;
 
-      /* Copy all of msg (except for msg_name) into the new ephemeral local */
+  BEGIN_CANCELATION_POINT;
+  if (IsAsan() && !__asan_is_valid_msghdr(msg)) {
+    rc = efault();
+  } else if (fd < g_fds.n && g_fds.p[fd].kind == kFdZip) {
+    rc = enotsock();
+  } else if (!IsWindows()) {
+    if (IsBsd() && msg->msg_name) {
       memcpy(&msg2, msg, sizeof(msg2));
-      msg2.msg_name = &addr2[0];
-      return sys_sendmsg(fd, &msg2, flags);
-    }
-    /* else do the syscall */
-    return sys_sendmsg(fd, msg, flags);
-  } else {
-    if (__isfdopen(fd)) {
-      if (msg->msg_control) return einval(); /* control msg not supported */
-      if (__isfdkind(fd, kFdSocket)) {
-        return sys_sendto_nt(&g_fds.p[fd], msg->msg_iov, msg->msg_iovlen, flags,
-                             msg->msg_name, msg->msg_namelen);
-      } else if (__isfdkind(fd, kFdFile)) {
-        return sys_write_nt(&g_fds.p[fd], msg->msg_iov, msg->msg_iovlen, -1);
-      } else {
-        return enotsock();
+      if (!(rc = sockaddr2bsd(msg->msg_name, msg->msg_namelen, &bsd,
+                              &msg2.msg_namelen))) {
+        msg2.msg_name = &bsd.sa;
+        rc = sys_sendmsg(fd, &msg2, flags);
       }
     } else {
-      return ebadf();
+      rc = sys_sendmsg(fd, msg, flags);
     }
+  } else if (__isfdopen(fd)) {
+    if (msg->msg_control) {
+      rc = einval(); /* control msg not supported */
+    } else if (__isfdkind(fd, kFdSocket)) {
+      rc = sys_sendto_nt(fd, msg->msg_iov, msg->msg_iovlen, flags,
+                         msg->msg_name, msg->msg_namelen);
+    } else if (__isfdkind(fd, kFdFile)) {  // e.g. socketpair
+      rc = sys_write_nt(fd, msg->msg_iov, msg->msg_iovlen, -1);
+    } else {
+      rc = enotsock();
+    }
+  } else {
+    rc = ebadf();
   }
+  END_CANCELATION_POINT;
+
+#if SYSDEBUG && _DATATRACE
+  // TODO(jart): Write a DescribeMsg() function.
+  if (strace_enabled(0) > 0) {
+    kprintf(STRACE_PROLOGUE "sendmsg(%d, ", fd);
+    if ((!IsAsan() && kisdangerous(msg)) ||
+        (IsAsan() && !__asan_is_valid(msg, sizeof(*msg)))) {
+      kprintf("%p", msg);
+    } else {
+      kprintf("{");
+      kprintf(".name=%#.*hhs, ", msg->msg_namelen, msg->msg_name);
+      if (msg->msg_controllen)
+        kprintf(", .control=%#.*hhs, ", msg->msg_controllen, msg->msg_control);
+      if (msg->msg_flags) kprintf(".flags=%#x, ", msg->msg_flags);
+      kprintf(", .iov=%s",
+              DescribeIovec(rc != -1 ? rc : -2, msg->msg_iov, msg->msg_iovlen));
+    }
+    kprintf(", %#x) → %'ld% m\n", flags, rc);
+  }
+#endif
+
+  return rc;
 }

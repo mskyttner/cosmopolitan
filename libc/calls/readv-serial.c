@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -17,14 +17,17 @@
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
 #include "libc/calls/internal.h"
+#include "libc/calls/struct/fd.internal.h"
+#include "libc/calls/struct/iovec.internal.h"
 #include "libc/nexgen32e/uart.internal.h"
 #include "libc/runtime/pc.internal.h"
+#ifdef __x86_64__
 
-static bool IsDataAvailable(struct Fd *fd) {
-  return inb(fd->handle + UART_LSR) & UART_TTYDA;
+static bool IsDataAvailable(int fd) {
+  return inb(g_fds.p[fd].handle + UART_LSR) & UART_TTYDA;
 }
 
-static int GetFirstIov(struct iovec *iov, int iovlen) {
+static int GetFirstIov(const struct iovec *iov, int iovlen) {
   int i;
   for (i = 0; i < iovlen; ++i) {
     if (iov[i].iov_len) {
@@ -34,22 +37,17 @@ static int GetFirstIov(struct iovec *iov, int iovlen) {
   return -1;
 }
 
-ssize_t sys_readv_serial(struct Fd *fd, const struct iovec *iov, int iovlen) {
-  size_t i, j, got = 0;
+ssize_t sys_readv_serial(int fd, const struct iovec *iov, int iovlen) {
+  size_t i;
   if ((i = GetFirstIov(iov, iovlen)) != -1) {
-    while (!IsDataAvailable(fd)) asm("pause");
-    i = 0;
-    j = 0;
-    do {
-      ++got;
-      ((char *)iov[i].iov_base)[j] = inb(fd->handle);
-      if (++j == iov[i].iov_len) {
-        j = 0;
-        if (++i == iovlen) {
-          break;
-        }
-      }
-    } while (IsDataAvailable(fd));
+    while (!IsDataAvailable(fd)) {
+      __builtin_ia32_pause();
+    }
+    ((char *)iov[i].iov_base)[0] = inb(g_fds.p[fd].handle);
+    return 1;
+  } else {
+    return 0;
   }
-  return got;
 }
+
+#endif /* __x86_64__ */

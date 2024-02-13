@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -19,12 +19,10 @@
 #include "libc/str/str.h"
 
 /**
- * Compares memory.
+ * Tests inequality of first 𝑛 bytes of 𝑝 and 𝑞.
  *
- * This API was thought to be nearly extinct until recent versions
- * of Clang (c. 2019) started generating synthetic calls to it.
- *
- * @return 0 if a and b have equal contents, otherwise non-zero
+ * @return 0 if a and b have equal contents, otherwise nonzero
+ * @see timingsafe_bcmp()
  * @asyncsignalsafe
  */
 int bcmp(const void *a, const void *b, size_t n) {

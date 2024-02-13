@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,49 +16,16 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/bits/safemacros.internal.h"
 #include "libc/calls/calls.h"
+#include "libc/calls/struct/stat.h"
+#include "libc/errno.h"
+#include "libc/intrin/strace.internal.h"
+#include "libc/paths.h"
 #include "libc/runtime/runtime.h"
 #include "libc/str/str.h"
+#include "libc/sysv/consts/ok.h"
+#include "libc/sysv/consts/s.h"
 #include "libc/sysv/errfuns.h"
-
-static bool AccessCommand(char path[hasatleast PATH_MAX], const char *name,
-                          size_t namelen, size_t pathlen) {
-  if (pathlen + 1 + namelen + 1 + 4 + 1 > PATH_MAX) return -1;
-  if (pathlen && (path[pathlen - 1] != '/' && path[pathlen - 1] != '\\')) {
-    path[pathlen] =
-        !IsWindows() ? '/' : memchr(path, '\\', pathlen) ? '\\' : '/';
-    pathlen++;
-  }
-  memcpy(path + pathlen, name, namelen + 1);
-  if (isexecutable(path)) return true;
-  memcpy(path + pathlen + namelen, ".com", 5);
-  if (isexecutable(path)) return true;
-  memcpy(path + pathlen + namelen, ".exe", 5);
-  if (isexecutable(path)) return true;
-  return false;
-}
-
-static bool SearchPath(char path[hasatleast PATH_MAX], const char *name,
-                       size_t namelen) {
-  size_t i;
-  const char *p;
-  p = firstnonnull(emptytonull(getenv("PATH")), "/bin:/usr/local/bin:/usr/bin");
-  for (;;) {
-    for (i = 0; p[i] && p[i] != ':' && p[i] != ';'; ++i) {
-      if (i < PATH_MAX) path[i] = p[i];
-    }
-    if (AccessCommand(path, name, namelen, i)) {
-      return true;
-    }
-    if (p[i] == ':' || p[i] == ';') {
-      p += i + 1;
-    } else {
-      break;
-    }
-  }
-  return false;
-}
 
 /**
  * Resolves full pathname of executable.
@@ -69,35 +36,57 @@ static bool SearchPath(char path[hasatleast PATH_MAX], const char *name,
  * @asyncsignalsafe
  * @vforksafe
  */
-char *commandv(const char *name, char pathbuf[hasatleast PATH_MAX]) {
-  char *p;
+char *commandv(const char *name, char *pathbuf, size_t pathbufsz) {
+
+  // bounce empty names
   size_t namelen;
-  int rc, olderr;
   if (!(namelen = strlen(name))) {
     enoent();
-    return NULL;
+    return 0;
   }
-  if (namelen + 1 > PATH_MAX) {
-    enametoolong();
-    return NULL;
+
+  // get system path
+  const char *syspath;
+  if (memchr(name, '/', namelen)) {
+    syspath = "";
+  } else if (!(syspath = getenv("PATH"))) {
+    syspath = _PATH_DEFPATH;
   }
-  if (strchr(name, '/') || strchr(name, '\\')) {
-    if (AccessCommand(strcpy(pathbuf, ""), name, namelen, 0)) {
-      return pathbuf;
+
+  // iterate through directories
+  int old_errno = errno;
+  bool seen_eacces = false;
+  const char *b, *a = syspath;
+  errno = ENOENT;
+  do {
+    b = strchrnul(a, ':');
+    size_t dirlen = b - a;
+    if (dirlen + 1 + namelen < pathbufsz) {
+      if (dirlen) {
+        memcpy(pathbuf, a, dirlen);
+        pathbuf[dirlen] = '/';
+        memcpy(pathbuf + dirlen + 1, name, namelen + 1);
+      } else {
+        memcpy(pathbuf, name, namelen + 1);
+      }
+      if (!access(pathbuf, X_OK)) {
+        struct stat st;
+        if (!stat(pathbuf, &st) && S_ISREG(st.st_mode)) {
+          errno = old_errno;
+          return pathbuf;
+        }
+      } else if (errno == EACCES) {
+        seen_eacces = true;
+      }
     } else {
-      return NULL;
+      enametoolong();
     }
+    a = b + 1;
+  } while (*b);
+
+  // return error if not found
+  if (seen_eacces) {
+    errno = EACCES;
   }
-  olderr = errno;
-  if ((IsWindows() &&
-       (AccessCommand(pathbuf, name, namelen,
-                      stpcpy(pathbuf, kNtSystemDirectory) - pathbuf) ||
-        AccessCommand(pathbuf, name, namelen,
-                      stpcpy(pathbuf, kNtWindowsDirectory) - pathbuf))) ||
-      SearchPath(pathbuf, name, namelen)) {
-    errno = olderr;
-    return pathbuf;
-  } else {
-    return NULL;
-  }
+  return 0;
 }

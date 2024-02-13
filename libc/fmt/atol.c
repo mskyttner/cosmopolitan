@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,13 +16,36 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
+#include "libc/errno.h"
 #include "libc/fmt/conv.h"
 #include "libc/limits.h"
+#include "libc/stdckdint.h"
+#include "libc/str/str.h"
 
+/**
+ * Decodes decimal integer from ASCII string.
+ *
+ * @param s is a non-null nul-terminated string
+ * @return the decoded signed saturated integer
+ */
 long atol(const char *s) {
-  long res;
-  res = strtoimax(s, NULL, 10);
-  if (res < LONG_MIN) return LONG_MIN;
-  if (res > LONG_MAX) return LONG_MAX;
-  return res;
+  long x;
+  int c, d;
+  do c = *s++;
+  while (c == ' ' || c == '\t');
+  d = c == '-' ? -1 : 1;
+  if (c == '-' || c == '+') c = *s++;
+  for (x = 0; isdigit(c); c = *s++) {
+    if (ckd_mul(&x, x, 10) || ckd_add(&x, x, (c - '0') * d)) {
+      errno = ERANGE;
+      if (d > 0) {
+        return LONG_MAX;
+      } else {
+        return LONG_MIN;
+      }
+    }
+  }
+  return x;
 }
+
+__weak_reference(atol, atoll);

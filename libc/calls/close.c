@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,48 +16,94 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/bits/weaken.h"
+#include "libc/assert.h"
 #include "libc/calls/calls.h"
 #include "libc/calls/internal.h"
-#include "libc/macros.internal.h"
-#include "libc/sock/internal.h"
+#include "libc/calls/state.internal.h"
+#include "libc/calls/struct/fd.internal.h"
+#include "libc/calls/struct/sigset.internal.h"
+#include "libc/calls/syscall-nt.internal.h"
+#include "libc/calls/syscall-sysv.internal.h"
+#include "libc/dce.h"
+#include "libc/errno.h"
+#include "libc/intrin/kprintf.h"
+#include "libc/intrin/strace.internal.h"
+#include "libc/intrin/weaken.h"
+#include "libc/runtime/zipos.internal.h"
+#include "libc/sock/syscall_fd.internal.h"
 #include "libc/sysv/errfuns.h"
-#include "libc/zipos/zipos.internal.h"
+
+// for performance reasons we want to avoid holding __fds_lock()
+// while sys_close() is happening. this leaves the kernel / libc
+// having a temporarily inconsistent state. routines that obtain
+// file descriptors the way __zipos_open() does need to retry if
+// there's indication this race condition happened.
+
+static int close_impl(int fd) {
+
+  if (fd < 0) {
+    return ebadf();
+  }
+
+  // give kprintf() the opportunity to dup() stderr
+  if (fd == 2 && _weaken(kloghandle)) {
+    _weaken(kloghandle)();
+  }
+
+  if (__isfdkind(fd, kFdZip)) {
+    unassert(_weaken(__zipos_close));
+    return _weaken(__zipos_close)(fd);
+  }
+
+  if (!IsWindows() && !IsMetal()) {
+    return sys_close(fd);
+  }
+
+  if (IsWindows()) {
+    return sys_close_nt(fd, fd);
+  }
+
+  return 0;
+}
 
 /**
  * Closes file descriptor.
  *
- * This function may be used for file descriptors returned by socket,
- * accept, epoll_create, and zipos file descriptors too.
+ * This function releases resources returned by functions such as:
+ *
+ * - openat()
+ * - socket()
+ * - accept()
+ * - epoll_create()
+ * - landlock_create_ruleset()
+ *
+ * This function should never be reattempted if an error is returned;
+ * however, that doesn't mean the error should be ignored. This goes
+ * against the conventional wisdom of looping on `EINTR`.
  *
  * @return 0 on success, or -1 w/ errno
+ * @raise EINTR if signal was delivered; do *not* retry
+ * @raise EBADF if `fd` is negative or not open; however, an exception
+ *     is made by Cosmopolitan Libc for `close(-1)` which returns zero
+ *     and does nothing, in order to assist with code that may wish to
+ *     close the same resource multiple times without dirtying `errno`
+ * @raise EIO if a low-level i/o error occurred
  * @asyncsignalsafe
  * @vforksafe
  */
 int close(int fd) {
   int rc;
-  if (fd < 0) return einval();
-  if (fd < g_fds.n && g_fds.p[fd].kind == kFdZip) {
-    rc = weaken(__zipos_close)(fd);
+  if (__isfdkind(fd, kFdZip)) {  // XXX IsWindows()?
+    BLOCK_SIGNALS;
+    __fds_lock();
+    rc = close_impl(fd);
+    if (!__vforked) __releasefd(fd);
+    __fds_unlock();
+    ALLOW_SIGNALS;
   } else {
-    if (!IsWindows() && !IsMetal()) {
-      rc = sys_close(fd);
-    } else if (IsMetal()) {
-      rc = 0;
-    } else {
-      if (fd < g_fds.n && g_fds.p[fd].kind == kFdEpoll) {
-        rc = weaken(sys_close_epoll_nt)(fd);
-      } else if (fd < g_fds.n && g_fds.p[fd].kind == kFdSocket) {
-        rc = weaken(sys_closesocket_nt)(g_fds.p + fd);
-      } else if (fd < g_fds.n && (g_fds.p[fd].kind == kFdFile ||
-                                  g_fds.p[fd].kind == kFdConsole ||
-                                  g_fds.p[fd].kind == kFdProcess)) {
-        rc = sys_close_nt(g_fds.p + fd);
-      } else {
-        rc = ebadf();
-      }
-    }
+    rc = close_impl(fd);
+    if (!__vforked) __releasefd(fd);
   }
-  __releasefd(fd);
+  STRACE("close(%d) → %d% m", fd, rc);
   return rc;
 }

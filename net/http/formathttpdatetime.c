@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -27,6 +27,15 @@
  *
  *   Sun, 04 Oct 2020 19:50:10 GMT
  *
+ * This function is the same as:
+ *
+ *     strftime(p, 30, "%a, %d %b %Y %H:%M:%S %Z", tm)
+ *
+ * Except this function goes 10x faster:
+ *
+ *     FormatHttpDateTime  l:        25𝑐         8𝑛𝑠
+ *     strftime            l:       709𝑐       229𝑛𝑠
+ *
  * @param tm must be zulu see gmtime_r() and nowl()
  * @see ParseHttpDateTime()
  */
@@ -35,7 +44,7 @@ char *FormatHttpDateTime(char p[hasatleast 30], struct tm *tm) {
   p = mempcpy(p, kWeekdayNameShort[tm->tm_wday], 3);
   *p++ = ',';
   *p++ = ' ';
-  i = MIN(MAX(tm->tm_mday, 0), 31);
+  i = MIN(MAX(tm->tm_mday, 1), 31);
   *p++ = '0' + i / 10;
   *p++ = '0' + i % 10;
   *p++ = ' ';

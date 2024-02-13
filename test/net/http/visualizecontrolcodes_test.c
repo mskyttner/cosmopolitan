@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2021 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,19 +16,23 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/runtime/gc.internal.h"
+#include "libc/mem/gc.h"
+#include "libc/mem/mem.h"
 #include "libc/testlib/ezbench.h"
 #include "libc/testlib/hyperion.h"
 #include "libc/testlib/testlib.h"
-#include "libc/x/x.h"
+#include "libc/x/xasprintf.h"
 #include "net/http/escape.h"
 
 TEST(VisualizeControlCodes, test) {
+  size_t n;
   EXPECT_STREQ("hello", gc(VisualizeControlCodes("hello", -1, 0)));
   EXPECT_STREQ("hello\r\n", gc(VisualizeControlCodes("hello\r\n", -1, 0)));
   EXPECT_STREQ("hello␁␂␡", gc(VisualizeControlCodes("hello\1\2\177", -1, 0)));
   EXPECT_STREQ("hello\\u0085",
                gc(VisualizeControlCodes("hello\302\205", -1, 0)));
+  EXPECT_STREQ("hi", gc(VisualizeControlCodes("hi", -1, &n)));
+  EXPECT_EQ(2, n);
 }
 
 TEST(VisualizeControlCodes, testOom_returnsNullAndSetsSizeToZero) {

@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,7 +16,7 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/alg/arraylist2.internal.h"
+#include "libc/mem/arraylist2.internal.h"
 #include "third_party/chibicc/chibicc.h"
 
 static const char kBoolStr[2][6] = {"false", "true"};
@@ -130,6 +130,8 @@ static void PrintType(FILE *f, int l, const char *s, Type *t) {
       PrintBool(f, l + 2, "is_flexible: ", t->is_flexible);
       PrintBool(f, l + 2, "is_packed: ", t->is_packed);
       PrintBool(f, l + 2, "is_aligned: ", t->is_aligned);
+      PrintBool(f, l + 2, "is_const: ", t->is_const);
+      PrintBool(f, l + 2, "is_static: ", t->is_static);
       PrintType(f, l + 2, "return_ty: ", t->return_ty);
       PrintType(f, l + 2, "params: ", t->params);
       PrintBool(f, l + 2, "is_variadic: ", t->is_variadic);
@@ -187,7 +189,6 @@ static void PrintNode(FILE *f, int l, const char *s, Node *n) {
     PrintInt(f, l + 2, "end: ", n->end);
     PrintMember(f, l + 2, "member: ", n->member);
     PrintObj(f, l + 2, "var: ", n->var);
-    PrintNode(f, l + 2, "overflow: ", n->overflow);
     PrintInt(f, l + 2, "val: ", n->val);
     if (n->fval) PrintLine(f, l + 2, "fval: %Lf", n->fval);
     PrintLine(f, l, "}");

@@ -1,12 +1,33 @@
-/*
-** $Id: lgc.c $
-** Garbage Collector
-** See Copyright Notice in lua.h
-*/
-
+/*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
+╚──────────────────────────────────────────────────────────────────────────────╝
+│                                                                              │
+│  Lua                                                                         │
+│  Copyright © 2004-2021 Lua.org, PUC-Rio.                                     │
+│                                                                              │
+│  Permission is hereby granted, free of charge, to any person obtaining       │
+│  a copy of this software and associated documentation files (the             │
+│  "Software"), to deal in the Software without restriction, including         │
+│  without limitation the rights to use, copy, modify, merge, publish,         │
+│  distribute, sublicense, and/or sell copies of the Software, and to          │
+│  permit persons to whom the Software is furnished to do so, subject to       │
+│  the following conditions:                                                   │
+│                                                                              │
+│  The above copyright notice and this permission notice shall be              │
+│  included in all copies or substantial portions of the Software.             │
+│                                                                              │
+│  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,             │
+│  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF          │
+│  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.      │
+│  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY        │
+│  CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,        │
+│  TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE           │
+│  SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                      │
+│                                                                              │
+╚─────────────────────────────────────────────────────────────────────────────*/
 #define lgc_c
 #define LUA_CORE
-
+#include "libc/str/str.h"
 #include "third_party/lua/ldebug.h"
 #include "third_party/lua/ldo.h"
 #include "third_party/lua/lfunc.h"
@@ -20,7 +41,11 @@
 #include "third_party/lua/ltm.h"
 #include "third_party/lua/lua.h"
 
-/* clang-format off */
+asm(".ident\t\"\\n\\n\
+Lua 5.4.3 (MIT License)\\n\
+Copyright 1994–2021 Lua.org, PUC-Rio.\"");
+asm(".include \"libc/disclaimer.inc\"");
+
 
 /*
 ** Maximum number of elements to sweep in each single step.
@@ -911,7 +936,7 @@ static void GCTM (lua_State *L) {
     L->ci->callstatus &= ~CIST_FIN;  /* not running a finalizer anymore */
     L->allowhook = oldah;  /* restore hooks */
     g->gcrunning = running;  /* restore state */
-    if (unlikely(status != LUA_OK)) {  /* error while running __gc? */
+    if (l_unlikely(status != LUA_OK)) {  /* error while running __gc? */
       luaE_warnerror(L, "__gc metamethod");
       L->top--;  /* pops error object */
     }
@@ -1570,52 +1595,64 @@ static int sweepstep (lua_State *L, global_State *g,
 
 static lu_mem singlestep (lua_State *L) {
   global_State *g = G(L);
+  lu_mem work;
+  lua_assert(!g->gcstopem);  /* collector is not reentrant */
+  g->gcstopem = 1;  /* no emergency collections while collecting */
   switch (g->gcstate) {
     case GCSpause: {
       restartcollection(g);
       g->gcstate = GCSpropagate;
-      return 1;
+      work = 1;
+      break;
     }
     case GCSpropagate: {
       if (g->gray == NULL) {  /* no more gray objects? */
         g->gcstate = GCSenteratomic;  /* finish propagate phase */
-        return 0;
+        work = 0;
       }
       else
-        return propagatemark(g);  /* traverse one gray object */
+        work = propagatemark(g);  /* traverse one gray object */
+      break;
     }
     case GCSenteratomic: {
-      lu_mem work = atomic(L);  /* work is what was traversed by 'atomic' */
+      work = atomic(L);  /* work is what was traversed by 'atomic' */
       entersweep(L);
       g->GCestimate = gettotalbytes(g);  /* first estimate */;
-      return work;
+      break;
     }
     case GCSswpallgc: {  /* sweep "regular" objects */
-      return sweepstep(L, g, GCSswpfinobj, &g->finobj);
+      work = sweepstep(L, g, GCSswpfinobj, &g->finobj);
+      break;
     }
     case GCSswpfinobj: {  /* sweep objects with finalizers */
-      return sweepstep(L, g, GCSswptobefnz, &g->tobefnz);
+      work = sweepstep(L, g, GCSswptobefnz, &g->tobefnz);
+      break;
     }
     case GCSswptobefnz: {  /* sweep objects to be finalized */
-      return sweepstep(L, g, GCSswpend, NULL);
+      work = sweepstep(L, g, GCSswpend, NULL);
+      break;
     }
     case GCSswpend: {  /* finish sweeps */
       checkSizes(L, g);
       g->gcstate = GCScallfin;
-      return 0;
+      work = 0;
+      break;
     }
     case GCScallfin: {  /* call remaining finalizers */
       if (g->tobefnz && !g->gcemergency) {
-        int n = runafewfinalizers(L, GCFINMAX);
-        return n * GCFINALIZECOST;
+        g->gcstopem = 0;  /* ok collections during finalizers */
+        work = runafewfinalizers(L, GCFINMAX) * GCFINALIZECOST;
       }
       else {  /* emergency mode or no more finalizers */
         g->gcstate = GCSpause;  /* finish collection */
-        return 0;
+        work = 0;
       }
+      break;
     }
     default: lua_assert(0); return 0;
   }
+  g->gcstopem = 0;
+  return work;
 }
 
 

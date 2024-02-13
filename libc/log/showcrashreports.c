@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,22 +16,47 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/bits/bits.h"
-#include "libc/calls/calls.h"
-#include "libc/calls/sigbits.h"
-#include "libc/calls/typedef/sigaction_f.h"
-#include "libc/dce.h"
+#include "libc/assert.h"
+#include "libc/calls/struct/sigaction.h"
+#include "libc/calls/struct/sigaltstack.h"
+#include "libc/calls/struct/sigset.h"
+#include "libc/intrin/leaky.internal.h"
 #include "libc/log/internal.h"
-#include "libc/log/log.h"
-#include "libc/macros.internal.h"
-#include "libc/nt/signals.h"
-#include "libc/str/str.h"
+#include "libc/mem/mem.h"
+#include "libc/runtime/runtime.h"
+#include "libc/runtime/symbols.internal.h"
 #include "libc/sysv/consts/sa.h"
 #include "libc/sysv/consts/sig.h"
 
-STATIC_YOINK("__die");
+#ifndef TINY
+__static_yoink("zipos");                       // for symtab
+__static_yoink("__die");                       // for backtracing
+__static_yoink("ShowBacktrace");               // for backtracing
+__static_yoink("GetSymbolTable");              // for backtracing
+__static_yoink("PrintBacktraceUsingSymbols");  // for backtracing
+__static_yoink("malloc_inspect_all");          // for asan memory origin
+__static_yoink("GetSymbolByAddr");             // for asan memory origin
+#endif
 
-extern const unsigned char __oncrash_thunks[7][11];
+static void InstallCrashHandler(int sig, int flags) {
+  struct sigaction sa;
+  sigemptyset(&sa.sa_mask);
+  sigaddset(&sa.sa_mask, SIGQUIT);
+  sigaddset(&sa.sa_mask, SIGFPE);
+  sigaddset(&sa.sa_mask, SIGILL);
+  sigaddset(&sa.sa_mask, SIGSEGV);
+  sigaddset(&sa.sa_mask, SIGTRAP);
+  sigaddset(&sa.sa_mask, SIGBUS);
+  sigaddset(&sa.sa_mask, SIGABRT);
+  sa.sa_flags = SA_SIGINFO | flags;
+#ifdef TINY
+  sa.sa_sigaction = __minicrash;
+#else
+  GetSymbolTable();
+  sa.sa_sigaction = __oncrash;
+#endif
+  unassert(!sigaction(sig, &sa, 0));
+}
 
 /**
  * Installs crash signal handlers.
@@ -47,31 +72,26 @@ extern const unsigned char __oncrash_thunks[7][11];
  * Another trick this function enables, is you can press CTRL+\ to open
  * the debugger GUI at any point while the program is running. It can be
  * useful, for example, if a program is caught in an infinite loop.
- *
- * @see callexitontermination()
  */
-void showcrashreports(void) {
-  size_t i;
-  struct sigaction sa;
-  /* <SYNC-LIST>: oncrashthunks.S */
-  kCrashSigs[0] = SIGQUIT; /* ctrl+\ aka ctrl+break */
-  kCrashSigs[1] = SIGFPE;  /* 1 / 0 */
-  kCrashSigs[2] = SIGILL;  /* illegal instruction */
-  kCrashSigs[3] = SIGSEGV; /* bad memory access */
-  kCrashSigs[4] = SIGTRAP; /* bad system call */
-  kCrashSigs[5] = SIGABRT; /* abort() called */
-  kCrashSigs[6] = SIGBUS;  /* misaligned, noncanonical ptr, etc. */
-  /* </SYNC-LIST>: oncrashthunks.S */
-  memset(&sa, 0, sizeof(sa));
-  sa.sa_flags = SA_RESETHAND;
-  sigfillset(&sa.sa_mask);
-  for (i = 0; i < ARRAYLEN(kCrashSigs); ++i) {
-    sigdelset(&sa.sa_mask, kCrashSigs[i]);
-  }
-  for (i = 0; i < ARRAYLEN(kCrashSigs); ++i) {
-    if (kCrashSigs[i]) {
-      sa.sa_sigaction = (sigaction_f)__oncrash_thunks[i];
-      sigaction(kCrashSigs[i], &sa, &g_oldcrashacts[i]);
-    }
-  }
+void ShowCrashReports(void) {
+  struct sigaltstack ss;
+  static char crashstack[65536];
+  FindDebugBinary();
+  ss.ss_flags = 0;
+  ss.ss_size = sizeof(crashstack);
+  ss.ss_sp = crashstack;
+  unassert(!sigaltstack(&ss, 0));
+  InstallCrashHandler(SIGQUIT, 0);
+#ifdef __x86_64__
+  InstallCrashHandler(SIGTRAP, 0);
+#else
+  InstallCrashHandler(SIGTRAP, SA_RESETHAND);
+#endif
+  InstallCrashHandler(SIGFPE, SA_RESETHAND);
+  InstallCrashHandler(SIGILL, SA_RESETHAND);
+  InstallCrashHandler(SIGBUS, SA_RESETHAND);
+  InstallCrashHandler(SIGABRT, SA_RESETHAND);
+  InstallCrashHandler(SIGSEGV, SA_RESETHAND | SA_ONSTACK);
 }
+
+IGNORE_LEAKS(ShowCrashReports)

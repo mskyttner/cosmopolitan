@@ -10,11 +10,12 @@
 #define kX86CpuExtfamilyid ((KCPUIDS(1H, EAX) >> 20) & 255)
 
 #define kX86CpuFamily \
-  (kX86CpuFamilyid + (kX86CpuFamily == 15 ? kX86CpuExtfamilyid : 0))
+  (kX86CpuFamilyid + (kX86CpuFamilyid == 15 ? kX86CpuExtfamilyid : 0))
 
-#define kX86CpuModel \
-  (kX86CpuModelid |  \
-   (kX86CpuFamily == 6 || kX86CpuFamily == 15 ? kX86CpuExtmodelid : 0) << 4)
+#define kX86CpuModel                                                       \
+  (kX86CpuModelid |                                                        \
+   (kX86CpuFamilyid == 6 || kX86CpuFamilyid == 15 ? kX86CpuExtmodelid : 0) \
+       << 4)
 
 #define kX86ProcessorModelKey                                                 \
   (kX86CpuExtfamilyid << 12 | kX86CpuFamilyid << 8 | kX86CpuExtmodelid << 4 | \
@@ -42,6 +43,11 @@
 #define X86_MARCH_TREMONT        19
 #define X86_MARCH_KNIGHTSLANDING 20
 #define X86_MARCH_KNIGHTSMILL    21
+#define X86_MARCH_SAPPHIRERAPIDS 22
+#define X86_MARCH_ALDERLAKE      23
+#define X86_MARCH_COMETLAKE      24
+#define X86_MARCH_RAPTORLAKE     25
+#define X86_MARCH_ROCKETLAKE     26
 
 #define X86_GRADE_UNKNOWN   0
 #define X86_GRADE_APPLIANCE 1

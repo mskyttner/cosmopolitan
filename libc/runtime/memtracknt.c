@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -17,24 +17,23 @@
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
 #include "libc/assert.h"
+#include "libc/intrin/strace.internal.h"
 #include "libc/nt/memory.h"
 #include "libc/nt/runtime.h"
-#include "libc/runtime/memtrack.h"
+#include "libc/runtime/memtrack.internal.h"
 #include "libc/runtime/runtime.h"
 
-static noasan void *GetFrameAddr(int f) {
+static inline void *GetFrameAddr(int f) {
   intptr_t a;
   a = f;
   a *= FRAMESIZE;
   return (void *)a;
 }
 
-noasan void ReleaseMemoryNt(struct MemoryIntervals *mm, int l, int r) {
-  int i, ok;
+void __release_memory_nt(struct MemoryIntervals *mm, int l, int r) {
+  int i;
   for (i = l; i <= r; ++i) {
-    ok = UnmapViewOfFile(GetFrameAddr(mm->p[i].x));
-    assert(ok);
-    ok = CloseHandle(mm->p[i].h);
-    assert(ok);
+    UnmapViewOfFile(GetFrameAddr(mm->p[i].x));
+    CloseHandle(mm->p[i].h);
   }
 }

@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,13 +16,12 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/bits/safemacros.internal.h"
-#include "libc/fmt/fmt.h"
+#include "tool/decode/lib/asmcodegen.h"
+#include "libc/intrin/safemacros.internal.h"
+#include "libc/mem/gc.h"
 #include "libc/mem/mem.h"
-#include "libc/runtime/gc.internal.h"
 #include "libc/stdio/stdio.h"
 #include "libc/str/str.h"
-#include "tool/decode/lib/asmcodegen.h"
 
 char b1[BUFSIZ];
 char b2[BUFSIZ];
@@ -35,7 +34,7 @@ char *format(char *buf, const char *fmt, ...) {
   return buf;
 }
 
-nodiscard char *tabpad(const char *s, unsigned width) {
+char *tabpad(const char *s, unsigned width) {
   char *p;
   size_t i, l, need;
   l = strlen(s);
@@ -52,7 +51,7 @@ nodiscard char *tabpad(const char *s, unsigned width) {
 
 void show(const char *directive, const char *value, const char *comment) {
   if (comment) {
-    printf("\t%s\t%s# %s\n", directive, gc(tabpad(value, COLUMN_WIDTH)),
+    printf("\t%s\t%s// %s\n", directive, gc(tabpad(value, COLUMN_WIDTH)),
            comment);
   } else {
     printf("\t%s\t%s\n", directive, gc(tabpad(value, COLUMN_WIDTH)));

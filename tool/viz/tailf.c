@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,9 +16,9 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/bits/safemacros.internal.h"
 #include "libc/calls/calls.h"
 #include "libc/calls/struct/stat.h"
+#include "libc/intrin/safemacros.internal.h"
 #include "libc/macros.internal.h"
 #include "libc/runtime/runtime.h"
 #include "libc/stdio/stdio.h"
@@ -26,7 +26,7 @@
 #include "libc/sysv/consts/o.h"
 #include "libc/sysv/consts/sig.h"
 #include "libc/time/time.h"
-#include "libc/x/x.h"
+#include "libc/x/xsigaction.h"
 
 /**
  * @fileoverview tail -f with lower poll rate
@@ -93,7 +93,7 @@ int main(int argc, char *argv[]) {
       }
       chopped = j != n;
     }
-    dsleep(.01);
+    usleep(10000);
   }
   close(fd);
   WriteString("\r\n");

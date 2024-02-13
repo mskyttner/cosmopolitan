@@ -1,5 +1,5 @@
 /*-*- mode:unix-assembly; indent-tabs-mode:t; tab-width:8; coding:utf-8     -*-│
-│vi: set et ft=asm ts=8 tw=8 fenc=utf-8                                     :vi│
+│ vi: set noet ft=asm ts=8 sw=8 fenc=utf-8                                 :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2021 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -21,9 +21,9 @@
 
 __restore_rt_netbsd:
 	mov	%r15,%rdi
-	mov	$308,%rax			# setcontext
+	mov	$308,%eax			# setcontext
 	syscall
-	mov	$-1,%edi
+	or	$-1,%edi
 	mov	$1,%rax				# exit
 	syscall
 	.endfn	__restore_rt_netbsd,globl,hidden

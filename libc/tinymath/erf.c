@@ -1,5 +1,5 @@
-/*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+/*-*- mode:c;indent-tabs-mode:t;c-basic-offset:8;tab-width:8;coding:utf-8   -*-│
+│ vi: set noet ft=c ts=8 sw=8 fenc=utf-8                                   :vi │
 ╚──────────────────────────────────────────────────────────────────────────────╝
 │                                                                              │
 │  Musl Libc                                                                   │
@@ -34,8 +34,8 @@ asm(".ident\t\"\\n\\n\
 Musl libc (MIT License)\\n\
 Copyright 2005-2014 Rich Felker, et. al.\"");
 asm(".include \"libc/disclaimer.inc\"");
-
 /* clang-format off */
+
 /* origin: FreeBSD /usr/src/lib/msun/src/s_erf.c */
 /*
  * ====================================================
@@ -334,3 +334,8 @@ double erfc(double x)
 	}
 	return sign ? 2 - 0x1p-1022 : 0x1p-1022*0x1p-1022;
 }
+
+#if LDBL_MANT_DIG == 53 && LDBL_MAX_EXP == 1024
+__weak_reference(erf, erfl);
+__weak_reference(erfc, erfcl);
+#endif

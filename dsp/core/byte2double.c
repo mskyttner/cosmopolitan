@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -22,7 +22,7 @@
 void *byte2double(long n, const void *p, double weight, double bias) {
   long i;
   double f, *dst;
-  unsigned char *src;
+  const unsigned char *src;
   if ((dst = valloc(n * sizeof(double)))) {
     for (src = p, i = 0; i < n; ++i) {
       f = src[i];

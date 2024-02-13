@@ -7,9 +7,21 @@
 │   • http://creativecommons.org/publicdomain/zero/1.0/            │
 ╚─────────────────────────────────────────────────────────────────*/
 #endif
+#include "libc/calls/calls.h"
+#include "libc/runtime/runtime.h"
 #include "libc/stdio/stdio.h"
 
+/**
+ * @fileoverview Cosmopolitan Command Interpreter Demo
+ * Yes this works on Windows.
+ */
+
+__static_yoink("_tr");
+__static_yoink("_sed");
+
 int main(int argc, char *argv[]) {
-  system("notepad");
-  return 0;
+  system("x=world\n"
+         "echo hello $x |\n"
+         "  tr a-z A-Z |\n"
+         "  sed 's/\\(.\\)/\\1 /g'");
 }

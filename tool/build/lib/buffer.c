@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,18 +16,18 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/alg/arraylist2.internal.h"
+#include "tool/build/lib/buffer.h"
 #include "libc/calls/calls.h"
 #include "libc/errno.h"
-#include "libc/fmt/fmt.h"
 #include "libc/macros.internal.h"
-#include "libc/mem/fmt.h"
+#include "libc/mem/arraylist2.internal.h"
 #include "libc/mem/mem.h"
+#include "libc/stdio/stdio.h"
 #include "libc/str/str.h"
-#include "libc/str/tpenc.h"
-#include "tool/build/lib/buffer.h"
 
-void AppendData(struct Buffer *b, char *data, unsigned len) {
+/* TODO(jart): replace with new append*() library */
+
+void AppendData(struct Buffer *b, const char *data, size_t len) {
   char *p;
   unsigned n;
   if (b->i + len + 1 > b->n) {
@@ -62,16 +62,26 @@ void AppendWide(struct Buffer *b, wint_t wc) {
 }
 
 int AppendFmt(struct Buffer *b, const char *fmt, ...) {
-  int bytes;
-  char *tmp;
-  va_list va;
-  tmp = NULL;
+  int n;
+  va_list va, vb;
   va_start(va, fmt);
-  bytes = vasprintf(&tmp, fmt, va);
+  va_copy(vb, va);
+  n = vsnprintf(b->p + b->i, b->n - b->i, fmt, va);
+  if (b->i + n + 1 > b->n) {
+    do {
+      if (b->n) {
+        b->n += b->n >> 1;
+      } else {
+        b->n = 16;
+      }
+    } while (b->i + n + 1 > b->n);
+    b->p = realloc(b->p, b->n);
+    vsnprintf(b->p + b->i, b->n - b->i, fmt, vb);
+  }
+  va_end(vb);
   va_end(va);
-  if (bytes != -1) AppendData(b, tmp, bytes);
-  free(tmp);
-  return bytes;
+  b->i += n;
+  return n;
 }
 
 /**

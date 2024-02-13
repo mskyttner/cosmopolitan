@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,20 +16,34 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/calls/internal.h"
+#include "libc/assert.h"
+#include "libc/calls/syscall-nt.internal.h"
+#include "libc/calls/syscall-sysv.internal.h"
+#include "libc/dce.h"
+#include "libc/intrin/strace.internal.h"
 
 /**
  * Returns parent process id.
+ *
+ * @return parent process id (always successful)
+ * @note slow on Windows; needs to iterate process tree
  * @asyncsignalsafe
+ * @vforksafe
  */
 int getppid(void) {
-  if (!IsWindows()) {
+  int rc;
+  if (IsMetal()) {
+    rc = 1;
+  } else if (!IsWindows()) {
     if (!IsNetbsd()) {
-      return sys_getppid();
+      rc = sys_getppid();
     } else {
-      return sys_getpid().dx;
+      rc = sys_getpid().dx;
     }
   } else {
-    return sys_getppid_nt();
+    rc = sys_getppid_nt();
   }
+  npassert(rc >= 0);
+  STRACE("%s() → %d", "getppid", rc);
+  return rc;
 }

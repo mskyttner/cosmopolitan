@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,13 +16,17 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/alg/reverse.internal.h"
-#include "libc/bits/pushpop.h"
-#include "libc/bits/weaken.h"
 #include "libc/calls/calls.h"
-#include "libc/fmt/fmt.h"
+#include "libc/intrin/kprintf.h"
+#include "libc/intrin/pushpop.internal.h"
+#include "libc/intrin/strace.internal.h"
+#include "libc/intrin/weaken.h"
+#include "libc/limits.h"
+#include "libc/log/color.internal.h"
 #include "libc/log/internal.h"
+#include "libc/log/libfatal.internal.h"
 #include "libc/log/log.h"
+#include "libc/mem/reverse.internal.h"
 #include "libc/nt/runtime.h"
 #include "libc/runtime/internal.h"
 #include "libc/runtime/runtime.h"
@@ -34,6 +38,8 @@
 #define kUbsanKindInt     0
 #define kUbsanKindFloat   1
 #define kUbsanKindUnknown 0xffff
+
+typedef void __ubsan_die_f(void);
 
 struct UbsanSourceLocation {
   const char *file;
@@ -106,6 +112,13 @@ struct UbsanOverflowData {
   struct UbsanTypeDescriptor *type;
 };
 
+struct UbsanDynamicTypeCacheMissData {
+  struct UbsanSourceLocation location;
+  struct UbsanTypeDescriptor *type;
+  void *TypeInfo;
+  unsigned char TypeCheckKind;
+};
+
 struct UbsanFloatCastOverflowData {
 #if __GNUC__ + 0 >= 6
   struct UbsanSourceLocation location;
@@ -139,6 +152,8 @@ upcast of\0\
 cast to virtual base of\0\
 \0";
 
+uintptr_t __ubsan_vptr_type_cache[128];
+
 static int __ubsan_bits(struct UbsanTypeDescriptor *t) {
   return 1 << (t->info >> 1);
 }
@@ -151,49 +166,19 @@ static bool __ubsan_negative(struct UbsanTypeDescriptor *t, uintptr_t x) {
   return __ubsan_signed(t) && (intptr_t)x < 0;
 }
 
-static size_t __ubsan_strlen(const char *s) {
-  size_t n = 0;
-  while (*s++) ++n;
-  return n;
-}
-
-static char *__ubsan_stpcpy(char *d, const char *s) {
-  size_t i;
-  for (i = 0;; ++i) {
-    if (!(d[i] = s[i])) {
-      return d + i;
-    }
-  }
-}
-
-static char *__ubsan_poscpy(char *p, uintptr_t i) {
-  int j = 0;
-  do {
-    p[j++] = i % 10 + '0';
-    i /= 10;
-  } while (i > 0);
-  reverse(p, j);
-  return p + j;
-}
-
-static char *__ubsan_intcpy(char *p, intptr_t i) {
-  if (i >= 0) return __ubsan_poscpy(p, i);
-  *p++ = '-';
-  return __ubsan_poscpy(p, -i);
-}
-
-static char *__ubsan_hexcpy(char *p, uintptr_t x, int k) {
-  while (k) *p++ = "0123456789abcdef"[(x >> (k -= 4)) & 15];
-  return p;
-}
-
 static char *__ubsan_itpcpy(char *p, struct UbsanTypeDescriptor *t,
                             uintptr_t x) {
   if (__ubsan_signed(t)) {
-    return __ubsan_intcpy(p, x);
+    return __intcpy(p, x);
   } else {
-    return __ubsan_poscpy(p, x);
+    return __uintcpy(p, x);
   }
+}
+
+static size_t __ubsan_strlen(const char *s) {
+  size_t i = 0;
+  while (s[i]) ++i;
+  return i;
 }
 
 static const char *__ubsan_dubnul(const char *s, unsigned i) {
@@ -222,59 +207,51 @@ static uintptr_t __ubsan_extend(struct UbsanTypeDescriptor *t, uintptr_t x) {
   return x;
 }
 
-static privileged noinline wontreturn void __ubsan_exit(int rc) {
-  if (!IsWindows()) {
-    asm volatile("syscall"
-                 : /* no outputs */
-                 : "a"(__NR_exit_group), "D"(rc)
-                 : "memory");
-    unreachable;
-  } else {
-    ExitProcess(rc);
-  }
+static wontreturn void __ubsan_unreachable(void) {
+  for (;;) abort();
 }
 
-static privileged noinline ssize_t __ubsan_write(const void *data,
-                                                 size_t size) {
-  ssize_t rc;
-  uint32_t wrote;
-  if (!IsWindows()) {
-    asm volatile("syscall"
-                 : "=a"(rc)
-                 : "0"(__NR_write), "D"(2), "S"(data), "d"(size)
-                 : "rcx", "r11", "memory");
-    return rc;
-  } else {
-    if (WriteFile(GetStdHandle(kNtStdErrorHandle), data, size, &wrote, 0)) {
-      return wrote;
-    } else {
-      return -1;
+static void __ubsan_exit(void) {
+  kprintf("your ubsan runtime needs\n"
+          "\t__static_yoink(\"__die\");\n"
+          "in order to show you backtraces\n");
+  _Exit(99);
+}
+
+static char *__ubsan_stpcpy(char *d, const char *s) {
+  size_t i;
+  for (i = 0;; ++i) {
+    if (!(d[i] = s[i])) {
+      return d + i;
     }
   }
 }
 
-static ssize_t __ubsan_write_string(const char *s) {
-  return __ubsan_write(s, __ubsan_strlen(s));
+__wur static __ubsan_die_f *__ubsan_die(void) {
+  if (_weaken(__die)) {
+    return _weaken(__die);
+  } else {
+    return __ubsan_exit;
+  }
 }
 
-void __ubsan_abort(const struct UbsanSourceLocation *loc,
-                   const char *description) {
-  char buf[1024], *p = buf;
-  p = __ubsan_stpcpy(p, "error: ");
-  p = __ubsan_stpcpy(p, loc->file), *p++ = ':';
-  p = __ubsan_intcpy(p, loc->line);
-  p = __ubsan_stpcpy(p, ": ");
-  p = __ubsan_stpcpy(p, description);
-  p = __ubsan_stpcpy(p, "\r\n");
-  __ubsan_write_string(buf);
-  if (weaken(__die)) weaken(__die)();
-  __ubsan_exit(134);
+static void __ubsan_warning(const struct UbsanSourceLocation *loc,
+                            const char *description) {
+  kprintf("%s:%d: %subsan warning: %s is undefined behavior%s\n", loc->file,
+          loc->line, SUBTLE, description, RESET);
+}
+
+__wur __ubsan_die_f *__ubsan_abort(const struct UbsanSourceLocation *loc,
+                                   const char *description) {
+  kprintf("\n%s:%d: %subsan error%s: %s (tid %d)\n", loc->file, loc->line, RED2,
+          RESET, description, gettid());
+  return __ubsan_die();
 }
 
 static const char *__ubsan_describe_shift(
     struct UbsanShiftOutOfBoundsInfo *info, uintptr_t lhs, uintptr_t rhs) {
   if (__ubsan_negative(info->rhs_type, rhs)) {
-    return "shift exponent is negative";
+    return "negative shift exponent";
   } else if (rhs >= __ubsan_bits(info->lhs_type)) {
     return "shift exponent too large for type";
   } else if (__ubsan_negative(info->lhs_type, lhs)) {
@@ -286,9 +263,10 @@ static const char *__ubsan_describe_shift(
   }
 }
 
-void __ubsan_handle_shift_out_of_bounds(struct UbsanShiftOutOfBoundsInfo *info,
-                                        uintptr_t lhs, uintptr_t rhs) {
-  char buf[512], *p = buf;
+static char *__ubsan_describe_shift_out_of_bounds(
+    char buf[512], struct UbsanShiftOutOfBoundsInfo *info, uintptr_t lhs,
+    uintptr_t rhs) {
+  char *p = buf;
   lhs = __ubsan_extend(info->lhs_type, lhs);
   rhs = __ubsan_extend(info->rhs_type, rhs);
   p = __ubsan_stpcpy(p, __ubsan_describe_shift(info, lhs, rhs)), *p++ = ' ';
@@ -296,12 +274,22 @@ void __ubsan_handle_shift_out_of_bounds(struct UbsanShiftOutOfBoundsInfo *info,
   p = __ubsan_stpcpy(p, info->lhs_type->name), *p++ = ' ';
   p = __ubsan_itpcpy(p, info->rhs_type, rhs), *p++ = ' ';
   p = __ubsan_stpcpy(p, info->rhs_type->name);
-  __ubsan_abort(&info->location, buf);
+  return buf;
+}
+
+void __ubsan_handle_shift_out_of_bounds(struct UbsanShiftOutOfBoundsInfo *info,
+                                        uintptr_t lhs, uintptr_t rhs) {
+  char buf[512];
+  __ubsan_warning(&info->location,
+                  __ubsan_describe_shift_out_of_bounds(buf, info, lhs, rhs));
 }
 
 void __ubsan_handle_shift_out_of_bounds_abort(
     struct UbsanShiftOutOfBoundsInfo *info, uintptr_t lhs, uintptr_t rhs) {
-  __ubsan_handle_shift_out_of_bounds(info, lhs, rhs);
+  char buf[512];
+  __ubsan_abort(&info->location,
+                __ubsan_describe_shift_out_of_bounds(buf, info, lhs, rhs))();
+  __ubsan_unreachable();
 }
 
 void __ubsan_handle_out_of_bounds(struct UbsanOutOfBoundsInfo *info,
@@ -313,7 +301,8 @@ void __ubsan_handle_out_of_bounds(struct UbsanOutOfBoundsInfo *info,
   p = __ubsan_stpcpy(p, " into ");
   p = __ubsan_stpcpy(p, info->array_type->name);
   p = __ubsan_stpcpy(p, " out of bounds");
-  __ubsan_abort(&info->location, buf);
+  __ubsan_abort(&info->location, buf)();
+  __ubsan_unreachable();
 }
 
 void __ubsan_handle_out_of_bounds_abort(struct UbsanOutOfBoundsInfo *info,
@@ -321,11 +310,11 @@ void __ubsan_handle_out_of_bounds_abort(struct UbsanOutOfBoundsInfo *info,
   __ubsan_handle_out_of_bounds(info, index);
 }
 
-void __ubsan_handle_type_mismatch(struct UbsanTypeMismatchInfo *info,
-                                  uintptr_t pointer) {
+static __ubsan_die_f *__ubsan_type_mismatch_handler(
+    struct UbsanTypeMismatchInfo *info, uintptr_t pointer) {
   const char *kind;
   char buf[512], *p = buf;
-  if (!pointer) __ubsan_abort(&info->location, "null pointer access");
+  if (!pointer) return __ubsan_abort(&info->location, "null pointer access");
   kind = __ubsan_dubnul(kUbsanTypeCheckKinds, info->type_check_kind);
   if (info->alignment && (pointer & (info->alignment - 1))) {
     p = __ubsan_stpcpy(p, "unaligned ");
@@ -333,50 +322,66 @@ void __ubsan_handle_type_mismatch(struct UbsanTypeMismatchInfo *info,
     p = __ubsan_stpcpy(p, info->type->name), *p++ = ' ', *p++ = '@';
     p = __ubsan_itpcpy(p, info->type, pointer);
     p = __ubsan_stpcpy(p, " align ");
-    p = __ubsan_intcpy(p, info->alignment);
+    p = __intcpy(p, info->alignment);
   } else {
-    p = __ubsan_stpcpy(p, "insufficient size\r\n\t");
+    p = __ubsan_stpcpy(p, "insufficient size ");
     p = __ubsan_stpcpy(p, kind);
     p = __ubsan_stpcpy(p, " address 0x");
-    p = __ubsan_hexcpy(p, pointer, sizeof(pointer) * CHAR_BIT);
+    p = __fixcpy(p, pointer, sizeof(pointer) * CHAR_BIT);
     p = __ubsan_stpcpy(p, " with insufficient space for object of type ");
     p = __ubsan_stpcpy(p, info->type->name);
   }
-  __ubsan_abort(&info->location, buf);
+  return __ubsan_abort(&info->location, buf);
+}
+
+void __ubsan_handle_type_mismatch(struct UbsanTypeMismatchInfo *info,
+                                  uintptr_t pointer) {
+  __ubsan_type_mismatch_handler(info, pointer)();
+  __ubsan_unreachable();
 }
 
 void __ubsan_handle_type_mismatch_abort(struct UbsanTypeMismatchInfo *info,
                                         uintptr_t pointer) {
-  __ubsan_handle_type_mismatch(info, pointer);
+  __ubsan_type_mismatch_handler(info, pointer)();
+  __ubsan_unreachable();
 }
 
-void __ubsan_handle_type_mismatch_v1(
+static __ubsan_die_f *__ubsan_type_mismatch_v1_handler(
     struct UbsanTypeMismatchInfoClang *type_mismatch, uintptr_t pointer) {
   struct UbsanTypeMismatchInfo mm;
   mm.location = type_mismatch->location;
   mm.type = type_mismatch->type;
   mm.alignment = 1u << type_mismatch->log_alignment;
   mm.type_check_kind = type_mismatch->type_check_kind;
-  __ubsan_handle_type_mismatch(&mm, pointer);
+  return __ubsan_type_mismatch_handler(&mm, pointer);
+}
+
+void __ubsan_handle_type_mismatch_v1(
+    struct UbsanTypeMismatchInfoClang *type_mismatch, uintptr_t pointer) {
+  __ubsan_type_mismatch_v1_handler(type_mismatch, pointer)();
+  __ubsan_unreachable();
 }
 
 void __ubsan_handle_type_mismatch_v1_abort(
     struct UbsanTypeMismatchInfoClang *type_mismatch, uintptr_t pointer) {
-  __ubsan_handle_type_mismatch_v1(type_mismatch, pointer);
+  __ubsan_type_mismatch_v1_handler(type_mismatch, pointer)();
+  __ubsan_unreachable();
 }
 
 void __ubsan_handle_float_cast_overflow(void *data_raw, void *from_raw) {
   struct UbsanFloatCastOverflowData *data =
       (struct UbsanFloatCastOverflowData *)data_raw;
 #if __GNUC__ + 0 >= 6
-  __ubsan_abort(&data->location, "float cast overflow");
+  __ubsan_abort(&data->location, "float cast overflow")();
+  __ubsan_unreachable();
 #else
   const struct UbsanSourceLocation kUnknownLocation = {
       "<unknown file>",
       pushpop(0),
       pushpop(0),
   };
-  __ubsan_abort(((void)data, &kUnknownLocation), "float cast overflow");
+  __ubsan_abort(((void)data, &kUnknownLocation), "float cast overflow")();
+  __ubsan_unreachable();
 #endif
 }
 
@@ -385,7 +390,8 @@ void __ubsan_handle_float_cast_overflow_abort(void *data_raw, void *from_raw) {
 }
 
 void __ubsan_handle_add_overflow(const struct UbsanSourceLocation *loc) {
-  __ubsan_abort(loc, "add overflow");
+  __ubsan_abort(loc, "add overflow")();
+  __ubsan_unreachable();
 }
 
 void __ubsan_handle_add_overflow_abort(const struct UbsanSourceLocation *loc) {
@@ -394,7 +400,8 @@ void __ubsan_handle_add_overflow_abort(const struct UbsanSourceLocation *loc) {
 
 void __ubsan_handle_alignment_assumption(
     const struct UbsanSourceLocation *loc) {
-  __ubsan_abort(loc, "alignment assumption");
+  __ubsan_abort(loc, "alignment assumption")();
+  __ubsan_unreachable();
 }
 
 void __ubsan_handle_alignment_assumption_abort(
@@ -403,7 +410,8 @@ void __ubsan_handle_alignment_assumption_abort(
 }
 
 void __ubsan_handle_builtin_unreachable(const struct UbsanSourceLocation *loc) {
-  __ubsan_abort(loc, "builtin unreachable");
+  __ubsan_abort(loc, "builtin unreachable")();
+  __ubsan_unreachable();
 }
 
 void __ubsan_handle_builtin_unreachable_abort(
@@ -412,7 +420,8 @@ void __ubsan_handle_builtin_unreachable_abort(
 }
 
 void __ubsan_handle_cfi_bad_type(const struct UbsanSourceLocation *loc) {
-  __ubsan_abort(loc, "cfi bad type");
+  __ubsan_abort(loc, "cfi bad type")();
+  __ubsan_unreachable();
 }
 
 void __ubsan_handle_cfi_bad_type_abort(const struct UbsanSourceLocation *loc) {
@@ -420,7 +429,8 @@ void __ubsan_handle_cfi_bad_type_abort(const struct UbsanSourceLocation *loc) {
 }
 
 void __ubsan_handle_cfi_check_fail(const struct UbsanSourceLocation *loc) {
-  __ubsan_abort(loc, "cfi check fail");
+  __ubsan_abort(loc, "cfi check fail")();
+  __ubsan_unreachable();
 }
 
 void __ubsan_handle_cfi_check_fail_abort(
@@ -429,7 +439,8 @@ void __ubsan_handle_cfi_check_fail_abort(
 }
 
 void __ubsan_handle_divrem_overflow(const struct UbsanSourceLocation *loc) {
-  __ubsan_abort(loc, "divrem overflow");
+  __ubsan_abort(loc, "divrem overflow")();
+  __ubsan_unreachable();
 }
 
 void __ubsan_handle_divrem_overflow_abort(
@@ -437,19 +448,28 @@ void __ubsan_handle_divrem_overflow_abort(
   __ubsan_handle_divrem_overflow(loc);
 }
 
+static bool HandleDynamicTypeCacheMiss(
+    struct UbsanDynamicTypeCacheMissData *data, uintptr_t ptr, uintptr_t hash) {
+  return false;  // TODO: implement me
+}
+
 void __ubsan_handle_dynamic_type_cache_miss(
-    const struct UbsanSourceLocation *loc) {
-  __ubsan_abort(loc, "dynamic type cache miss");
+    struct UbsanDynamicTypeCacheMissData *data, uintptr_t ptr, uintptr_t hash) {
+  HandleDynamicTypeCacheMiss(data, ptr, hash);
 }
 
 void __ubsan_handle_dynamic_type_cache_miss_abort(
-    const struct UbsanSourceLocation *loc) {
-  __ubsan_handle_dynamic_type_cache_miss(loc);
+    struct UbsanDynamicTypeCacheMissData *data, uintptr_t ptr, uintptr_t hash) {
+  if (HandleDynamicTypeCacheMiss(data, ptr, hash)) {
+    __ubsan_abort(&data->location, "dynamic type cache miss")();
+    __ubsan_unreachable();
+  }
 }
 
 void __ubsan_handle_function_type_mismatch(
     const struct UbsanSourceLocation *loc) {
-  __ubsan_abort(loc, "function type mismatch");
+  __ubsan_abort(loc, "function type mismatch")();
+  __ubsan_unreachable();
 }
 
 void __ubsan_handle_function_type_mismatch_abort(
@@ -458,7 +478,8 @@ void __ubsan_handle_function_type_mismatch_abort(
 }
 
 void __ubsan_handle_implicit_conversion(const struct UbsanSourceLocation *loc) {
-  __ubsan_abort(loc, "implicit conversion");
+  __ubsan_abort(loc, "implicit conversion")();
+  __ubsan_unreachable();
 }
 
 void __ubsan_handle_implicit_conversion_abort(
@@ -467,7 +488,8 @@ void __ubsan_handle_implicit_conversion_abort(
 }
 
 void __ubsan_handle_invalid_builtin(const struct UbsanSourceLocation *loc) {
-  __ubsan_abort(loc, "invalid builtin");
+  __ubsan_abort(loc, "invalid builtin")();
+  __ubsan_unreachable();
 }
 
 void __ubsan_handle_invalid_builtin_abort(
@@ -476,7 +498,8 @@ void __ubsan_handle_invalid_builtin_abort(
 }
 
 void __ubsan_handle_load_invalid_value(const struct UbsanSourceLocation *loc) {
-  __ubsan_abort(loc, "load invalid value (uninitialized? bool∌[01]?)");
+  __ubsan_abort(loc, "load invalid value (uninitialized? bool∌[01]?)")();
+  __ubsan_unreachable();
 }
 
 void __ubsan_handle_load_invalid_value_abort(
@@ -485,7 +508,8 @@ void __ubsan_handle_load_invalid_value_abort(
 }
 
 void __ubsan_handle_missing_return(const struct UbsanSourceLocation *loc) {
-  __ubsan_abort(loc, "missing return");
+  __ubsan_abort(loc, "missing return")();
+  __ubsan_unreachable();
 }
 
 void __ubsan_handle_missing_return_abort(
@@ -494,7 +518,8 @@ void __ubsan_handle_missing_return_abort(
 }
 
 void __ubsan_handle_mul_overflow(const struct UbsanSourceLocation *loc) {
-  __ubsan_abort(loc, "multiply overflow");
+  __ubsan_abort(loc, "multiply overflow")();
+  __ubsan_unreachable();
 }
 
 void __ubsan_handle_mul_overflow_abort(const struct UbsanSourceLocation *loc) {
@@ -502,7 +527,8 @@ void __ubsan_handle_mul_overflow_abort(const struct UbsanSourceLocation *loc) {
 }
 
 void __ubsan_handle_negate_overflow(const struct UbsanSourceLocation *loc) {
-  __ubsan_abort(loc, "negate overflow");
+  __ubsan_abort(loc, "negate overflow")();
+  __ubsan_unreachable();
 }
 
 void __ubsan_handle_negate_overflow_abort(
@@ -511,24 +537,28 @@ void __ubsan_handle_negate_overflow_abort(
 }
 
 void __ubsan_handle_nonnull_arg(const struct UbsanSourceLocation *loc) {
-  __ubsan_abort(loc, "nonnull argument");
+  __ubsan_warning(loc, "null argument here");
 }
 
 void __ubsan_handle_nonnull_arg_abort(const struct UbsanSourceLocation *loc) {
-  __ubsan_handle_nonnull_arg(loc);
+  __ubsan_abort(loc, "nonnull argument")();
+  __ubsan_unreachable();
 }
 
 void __ubsan_handle_nonnull_return_v1(const struct UbsanSourceLocation *loc) {
-  __ubsan_abort(loc, "non-null return (v1)");
+  __ubsan_abort(loc, "non-null return (v1)")();
+  __ubsan_unreachable();
 }
 
 void __ubsan_handle_nonnull_return_v1_abort(
     const struct UbsanSourceLocation *loc) {
-  __ubsan_handle_nonnull_return_v1(loc);
+  __ubsan_abort(loc, "non-null return (v1)")();
+  __ubsan_unreachable();
 }
 
 void __ubsan_handle_nullability_arg(const struct UbsanSourceLocation *loc) {
-  __ubsan_abort(loc, "nullability arg");
+  __ubsan_abort(loc, "nullability arg")();
+  __ubsan_unreachable();
 }
 
 void __ubsan_handle_nullability_arg_abort(
@@ -538,7 +568,8 @@ void __ubsan_handle_nullability_arg_abort(
 
 void __ubsan_handle_nullability_return_v1(
     const struct UbsanSourceLocation *loc) {
-  __ubsan_abort(loc, "nullability return (v1)");
+  __ubsan_abort(loc, "nullability return (v1)")();
+  __ubsan_unreachable();
 }
 
 void __ubsan_handle_nullability_return_v1_abort(
@@ -547,7 +578,8 @@ void __ubsan_handle_nullability_return_v1_abort(
 }
 
 void __ubsan_handle_pointer_overflow(const struct UbsanSourceLocation *loc) {
-  __ubsan_abort(loc, "pointer overflow");
+  __ubsan_abort(loc, "pointer overflow")();
+  __ubsan_unreachable();
 }
 
 void __ubsan_handle_pointer_overflow_abort(
@@ -556,7 +588,8 @@ void __ubsan_handle_pointer_overflow_abort(
 }
 
 void __ubsan_handle_sub_overflow(const struct UbsanSourceLocation *loc) {
-  __ubsan_abort(loc, "subtract overflow");
+  __ubsan_abort(loc, "subtract overflow")();
+  __ubsan_unreachable();
 }
 
 void __ubsan_handle_sub_overflow_abort(const struct UbsanSourceLocation *loc) {
@@ -565,7 +598,8 @@ void __ubsan_handle_sub_overflow_abort(const struct UbsanSourceLocation *loc) {
 
 void __ubsan_handle_vla_bound_not_positive(
     const struct UbsanSourceLocation *loc) {
-  __ubsan_abort(loc, "vla bound not positive");
+  __ubsan_abort(loc, "vla bound not positive")();
+  __ubsan_unreachable();
 }
 
 void __ubsan_handle_vla_bound_not_positive_abort(
@@ -574,7 +608,8 @@ void __ubsan_handle_vla_bound_not_positive_abort(
 }
 
 void __ubsan_handle_nonnull_return(const struct UbsanSourceLocation *loc) {
-  __ubsan_abort(loc, "nonnull return");
+  __ubsan_abort(loc, "nonnull return")();
+  __ubsan_unreachable();
 }
 
 void __ubsan_handle_nonnull_return_abort(
@@ -591,3 +626,16 @@ void __ubsan_on_report(void) {
 void *__ubsan_get_current_report_data(void) {
   return 0;
 }
+
+static textstartup void ubsan_init() {
+  STRACE(" _   _ ____ ____    _    _   _");
+  STRACE("| | | | __ ) ___|  / \\  | \\ | |");
+  STRACE("| | | |  _ \\___ \\ / _ \\ |  \\| |");
+  STRACE("| |_| | |_) |__) / ___ \\| |\\  |");
+  STRACE(" \\___/|____/____/_/   \\_\\_| \\_|");
+  STRACE("cosmopolitan behavior module initialized");
+}
+
+const void *const ubsan_ctor[] initarray = {
+    ubsan_init,
+};

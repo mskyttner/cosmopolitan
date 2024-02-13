@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -17,11 +17,14 @@
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
 #include "libc/calls/calls.h"
-#include "libc/calls/internal.h"
+#include "libc/calls/syscall-sysv.internal.h"
+#include "libc/intrin/strace.internal.h"
 
 /**
  * Creates session and sets the process group id.
  */
-uint32_t getsid(int pid) {
-  return sys_getsid(pid);
+int getsid(int pid) {
+  int rc = sys_getsid(pid);
+  STRACE("%s(%d) → %d% m", "getsid", pid, rc);
+  return rc;
 }

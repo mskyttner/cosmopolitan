@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -22,9 +22,14 @@
 /**
  * Checks if effective user can access path in particular ways.
  *
+ * This is equivalent to saying:
+ *
+ *     faccessat(AT_FDCWD, path, mode, 0);
+ *
  * @param path is a filename or directory
  * @param mode can be R_OK, W_OK, X_OK, F_OK
- * @return 0 if ok, or -1 and sets errno
+ * @return 0 if ok, or -1 w/ errno
+ * @see faccessat() for further documentation
  * @asyncsignalsafe
  */
 int access(const char *path, int mode) {

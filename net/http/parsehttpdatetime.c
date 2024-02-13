@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,7 +16,8 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/bits/bits.h"
+#include "libc/serialize.h"
+#include "libc/str/str.h"
 #include "libc/time/time.h"
 #include "net/http/http.h"
 
@@ -36,10 +37,12 @@ static unsigned ParseMonth(const char *p) {
  *   Sun, 04 Oct 2020 19:50:10 GMT
  *
  * @return seconds from unix epoch
+ * @param n if -1 implies strlen
  * @see FormatHttpDateTime()
  */
 int64_t ParseHttpDateTime(const char *p, size_t n) {
-  unsigned weekday, year, month, day, hour, minute, second, yday, leap;
+  unsigned year, month, day, hour, minute, second, yday, leap;
+  if (n == -1) n = p ? strlen(p) : 0;
   if (n != 29) return 0;
   day = (p[5] - '0') * 10 + (p[6] - '0') - 1;
   month = ParseMonth(p + 8);

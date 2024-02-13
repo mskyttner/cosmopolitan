@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -17,21 +17,20 @@
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
 #include "libc/calls/calls.h"
-#include "libc/fmt/fmt.h"
 #include "libc/log/log.h"
 #include "libc/mem/mem.h"
+#include "libc/stdio/dprintf.h"
 
 static void onmemchunk(void *start, void *end, size_t used_bytes, void *arg) {
-  (dprintf)(*(int *)arg, "%p - %p : %08zx / %08lx\r\n", start, end, used_bytes,
-            (intptr_t)end - (intptr_t)start);
+  dprintf(*(int *)arg, "%p - %p : %08zx / %08lx\n", start, end, used_bytes,
+          (intptr_t)end - (intptr_t)start);
 }
 
 /**
  * Prints memory mappings.
  */
-void meminfo(int fd) {
-  memsummary(fd);
-  (dprintf)(fd, "%*s   %*s   %*s   %*s\r\n", POINTER_XDIGITS, "start",
-            POINTER_XDIGITS, "end", 8, "used", 8, "size");
+void _meminfo(int fd) {
+  _memsummary(fd);
+  dprintf(fd, "%12s   %12s   %8s   %8s\n", "start", "end", "used", "size");
   malloc_inspect_all(onmemchunk, &fd);
 }

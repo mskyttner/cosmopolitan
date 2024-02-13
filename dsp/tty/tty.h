@@ -3,10 +3,8 @@
 
 #define kTtyIdScreen 83
 
-#if !(__ASSEMBLER__ + __LINKER__ + 0)
 COSMOPOLITAN_C_START_
 
-struct FILE;
 struct termios;
 
 struct TtyIdent {
@@ -44,7 +42,7 @@ int ttysendtitle(int, const char *, const struct TtyIdent *);
 int ttyident(struct TtyIdent *, int, int);
 void ttyidentclear(struct TtyIdent *);
 char *ttydescribe(char *, size_t, const struct TtyIdent *);
-int ttyconfig(int, ttyconf_f, int64_t, const struct termios *);
+int ttyconfig(int, ttyconf_f, int64_t, struct termios *);
 int ttyrestore(int, const struct termios *);
 int ttysetrawdeadline(struct termios *, int64_t);
 int ttysetrawmode(struct termios *, int64_t);
@@ -55,5 +53,4 @@ void ttyhisto(uint32_t[hasatleast 256], uint8_t[hasatleast 256],
               const uint8_t *, const uint8_t *, size_t);
 
 COSMOPOLITAN_C_END_
-#endif /* !(__ASSEMBLER__ + __LINKER__ + 0) */
 #endif /* COSMOPOLITAN_DSP_TTY_TTY_H_ */

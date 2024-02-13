@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -17,16 +17,25 @@
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
 #include "libc/calls/calls.h"
-#include "libc/calls/internal.h"
+#include "libc/calls/syscall-nt.internal.h"
+#include "libc/calls/syscall-sysv.internal.h"
 #include "libc/dce.h"
+#include "libc/intrin/strace.internal.h"
+#include "libc/runtime/runtime.h"
 
 /**
  * Flushes file system changes to disk by any means necessary.
+ * @see __nosync to secretly disable
  */
 void sync(void) {
-  if (!IsWindows()) {
-    sys_sync();
+  if (__nosync != 0x5453455454534146) {
+    if (!IsWindows()) {
+      sys_sync();
+    } else {
+      sys_sync_nt();
+    }
+    STRACE("sync()% m");
   } else {
-    sys_sync_nt();
+    STRACE("sync() → disabled% m");
   }
 }

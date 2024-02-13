@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,17 +16,16 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
+#include "libc/assert.h"
 #include "libc/dce.h"
 #include "libc/macros.internal.h"
-#include "libc/runtime/memtrack.h"
+#include "libc/runtime/memtrack.internal.h"
 
-int UntrackMemoryIntervals(void *addr, size_t size) {
+int __untrack_memories(void *addr, size_t size) {
   int a, b;
+  unassert(size > 0);
   a = ROUNDDOWN((intptr_t)addr, FRAMESIZE) >> 16;
   b = ROUNDDOWN((intptr_t)addr + size - 1, FRAMESIZE) >> 16;
-  if (SupportsWindows()) {
-    return ReleaseMemoryIntervals(&_mmi, a, b, ReleaseMemoryNt);
-  } else {
-    return ReleaseMemoryIntervals(&_mmi, a, b, 0);
-  }
+  return __untrack_memory(&_mmi, a, b,
+                          SupportsWindows() ? __release_memory_nt : 0);
 }

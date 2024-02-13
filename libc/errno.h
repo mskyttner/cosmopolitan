@@ -1,281 +1,669 @@
 #ifndef COSMOPOLITAN_LIBC_ERRNO_H_
 #define COSMOPOLITAN_LIBC_ERRNO_H_
-
-/**
- * @fileoverview System error codes.
- * @see libc/sysv/consts.sh for numbers
- */
-
-#define EPERM           EPERM            /* operation not permitted */
-#define ENOENT          ENOENT           /* no such file or directory */
-#define ESRCH           ESRCH            /* no such process */
-#define EINTR           EINTR            /* interrupted system call */
-#define EIO             EIO              /* input/output error */
-#define ENXIO           ENXIO            /* no such device or address */
-#define E2BIG           E2BIG            /* argument list too long */
-#define ENOEXEC         ENOEXEC          /* exec format error */
-#define EBADF           EBADF            /* bad file descriptor */
-#define ECHILD          ECHILD           /* no child processes */
-#define EAGAIN          EAGAIN           /* resource temporarily unavailable */
-#define ENOMEM          ENOMEM           /* not enough space */
-#define EACCES          EACCES           /* permission denied */
-#define EFAULT          EFAULT           /* bad address */
-#define ENOTBLK         ENOTBLK          /* block device required */
-#define EBUSY           EBUSY            /* device or resource busy */
-#define EEXIST          EEXIST           /* file exists */
-#define EXDEV           EXDEV            /* improper link */
-#define ENODEV          ENODEV           /* no such device */
-#define ENOTDIR         ENOTDIR          /* not a directory */
-#define EISDIR          EISDIR           /* is a directory */
-#define EINVAL          EINVAL           /* invalid argument */
-#define ENFILE          ENFILE           /* too many open files in system */
-#define EMFILE          EMFILE           /* too many open files */
-#define ENOTTY          ENOTTY           /* inappropriate I/O control op */
-#define ETXTBSY         ETXTBSY          /* text file busy */
-#define EFBIG           EFBIG            /* file too large */
-#define ENOSPC          ENOSPC           /* no space left on device */
-#define ESPIPE          ESPIPE           /* invalid seek */
-#define EROFS           EROFS            /* read-only filesystem */
-#define EMLINK          EMLINK           /* too many links */
-#define EPIPE           EPIPE            /* broken pipe */
-#define EDOM            EDOM             /* argument out of function domain */
-#define ERANGE          ERANGE           /* result too large */
-#define EDEADLK         EDEADLK          /* resource deadlock avoided */
-#define ENAMETOOLONG    ENAMETOOLONG     /* filename too long */
-#define ENOLCK          ENOLCK           /* no locks available */
-#define ENOSYS          ENOSYS           /* system call not implemented */
-#define ENOTEMPTY       ENOTEMPTY        /* directory not empty */
-#define ELOOP           ELOOP            /* too many levels of symbolic links */
-#define ENOMSG          ENOMSG           /* no message of the desired type */
-#define EIDRM           EIDRM            /* identifier removed */
-#define ECHRNG          ECHRNG           /* channel number out of range */
-#define EL2NSYNC        EL2NSYNC         /* level 2 not synchronized */
-#define EL3HLT          EL3HLT           /* level 3 halted */
-#define EL3RST          EL3RST           /* level 3 halted */
-#define ELNRNG          ELNRNG           /* link number out of range */
-#define EUNATCH         EUNATCH          /* protocol driver not attached */
-#define ENOCSI          ENOCSI           /* no csi structure available */
-#define EL2HLT          EL2HLT           /* level 2 halted */
-#define EBADE           EBADE            /* invalid exchange */
-#define EBADR           EBADR            /* invalid request descriptor */
-#define EXFULL          EXFULL           /* exchange full */
-#define ENOANO          ENOANO           /* no anode */
-#define EBADRQC         EBADRQC          /* invalid request code */
-#define EBADSLT         EBADSLT          /* invalid slot */
-#define ENOSTR          ENOSTR           /* no string */
-#define ENODATA         ENODATA          /* no data */
-#define ETIME           ETIME            /* timer expired */
-#define ENOSR           ENOSR            /* out of streams resources */
-#define ENONET          ENONET           /* no network */
-#define ENOPKG          ENOPKG           /* package not installed */
-#define EREMOTE         EREMOTE          /* object is remote */
-#define ENOLINK         ENOLINK          /* link severed */
-#define EADV            EADV             /* todo */
-#define ESRMNT          ESRMNT           /* todo */
-#define ECOMM           ECOMM            /* communication error on send */
-#define EPROTO          EPROTO           /* protocol error */
-#define EMULTIHOP       EMULTIHOP        /* multihop attempted */
-#define EDOTDOT         EDOTDOT          /* todo */
-#define EBADMSG         EBADMSG          /* bad message */
-#define EOVERFLOW       EOVERFLOW        /* value too large for type */
-#define ENOTUNIQ        ENOTUNIQ         /* name not unique on network */
-#define EBADFD          EBADFD           /* fd in bad *state* (cf. EBADF) */
-#define EREMCHG         EREMCHG          /* remote address changed */
-#define ELIBACC         ELIBACC          /* cannot access dso */
-#define ELIBBAD         ELIBBAD          /* corrupted shared library */
-#define ELIBSCN         ELIBSCN          /* a.out section corrupted */
-#define ELIBMAX         ELIBMAX          /* too many shared libraries */
-#define ELIBEXEC        ELIBEXEC         /* cannot exec a dso directly */
-#define EILSEQ          EILSEQ           /* invalid wide character */
-#define ERESTART        ERESTART         /* please restart syscall */
-#define ESTRPIPE        ESTRPIPE         /* streams pipe error */
-#define EUSERS          EUSERS           /* too many users */
-#define ENOTSOCK        ENOTSOCK         /* not a socket */
-#define EDESTADDRREQ    EDESTADDRREQ     /* dest address needed */
-#define EMSGSIZE        EMSGSIZE         /* message too long */
-#define EPROTOTYPE      EPROTOTYPE       /* protocol wrong for socket */
-#define ENOPROTOOPT     ENOPROTOOPT      /* protocol not available */
-#define EPROTONOSUPPORT EPROTONOSUPPORT  /* protocol not supported */
-#define ESOCKTNOSUPPORT ESOCKTNOSUPPORT  /* socket type not supported */
-#define EOPNOTSUPP      EOPNOTSUPP       /* operation not supported on socket */
-#define EPFNOSUPPORT    EPFNOSUPPORT     /* protocol family not supported */
-#define EAFNOSUPPORT    EAFNOSUPPORT     /* address family not supported */
-#define EADDRINUSE      EADDRINUSE       /* address already in use */
-#define EADDRNOTAVAIL   EADDRNOTAVAIL    /* address not available */
-#define ENETDOWN        ENETDOWN         /* network is down */
-#define ENETUNREACH     ENETUNREACH      /* network unreachable */
-#define ENETRESET       ENETRESET        /* connection aborted by network */
-#define ECONNABORTED    ECONNABORTED     /* connection aborted */
-#define ECONNRESET      ECONNRESET       /* connection reset */
-#define ENOBUFS         ENOBUFS          /* no buffer space available */
-#define EISCONN         EISCONN          /* socket is connected */
-#define ENOTCONN        ENOTCONN         /* the socket is not connected */
-#define ESHUTDOWN       ESHUTDOWN        /* no send after endpoint shutdown */
-#define ETOOMANYREFS    ETOOMANYREFS     /* too many refs */
-#define ETIMEDOUT       ETIMEDOUT        /* connection timed out */
-#define ECONNREFUSED    ECONNREFUSED     /* connection refused */
-#define EHOSTDOWN       EHOSTDOWN        /* host is down */
-#define EHOSTUNREACH    EHOSTUNREACH     /* host is unreachable */
-#define EALREADY        EALREADY         /* connection already in progress */
-#define EINPROGRESS     EINPROGRESS      /* operation in progress */
-#define ESTALE          ESTALE           /* stale file handle */
-#define EUCLEAN         EUCLEAN          /* structure needs cleaning */
-#define ENOTNAM         ENOTNAM          /* todo */
-#define ENAVAIL         ENAVAIL          /* todo */
-#define EISNAM          EISNAM           /* is a named type file */
-#define EREMOTEIO       EREMOTEIO        /* remote i/o error */
-#define EDQUOT          EDQUOT           /* disk quota exceeded */
-#define ENOMEDIUM       ENOMEDIUM        /* no medium found */
-#define EMEDIUMTYPE     EMEDIUMTYPE      /* wrong medium type */
-#define ECANCELED       ECANCELED        /* operation canceled */
-#define ENOKEY          ENOKEY           /* required key not available */
-#define EKEYEXPIRED     EKEYEXPIRED      /* key has expired */
-#define EKEYREVOKED     EKEYREVOKED      /* key has been revoked */
-#define EKEYREJECTED    EKEYREJECTED     /* key was rejected by service */
-#define EOWNERDEAD      EOWNERDEAD       /* owner died */
-#define ENOTRECOVERABLE ENOTRECOVERABLE  /* state not recoverable */
-#define ERFKILL         ERFKILL          /* can't op b/c RF-kill */
-#define EHWPOISON       EHWPOISON        /* mempage has h/w error */
-#define EWOULDBLOCK     EAGAIN           /* poll fd and try again */
-#define ENOTSUP         ENOTSUP
-
-#if !(__ASSEMBLER__ + __LINKER__ + 0)
 COSMOPOLITAN_C_START_
 
-extern errno_t errno;
+/**
+ * @fileoverview System Five error codes.
+ *
+ * This file defines the `errno` global variable. When system calls
+ * (e.g. read(), write(), etc.) fail they return -1 to indicate the
+ * failure, and that is *the only* error return value. System calls
+ * also update `errno` too whenever -1 is returned (otherwise errno
+ * isn't changed) to be a non-zero value holding one of the numbers
+ * below, in order to indicate why the system call failed.
+ *
+ * There is only one exception to the above rule; some system calls
+ * are documented with the `@returnserrno` tag, which means they'll
+ * return the error number rather than stuffing it in a global. You
+ * can usually spot these system calls easily since most of them'll
+ * have names like `posix_foo()` or `pthread_bar()`.
+ *
+ * @see libc/sysv/consts.sh for assigned numbers
+ * @see libc/sysv/dos2errno.sh for multimapped numbers
+ */
 
-hidden extern const long EPERM;
-hidden extern const long ENOENT;
-hidden extern const long ESRCH;
-hidden extern const long EINTR;
-hidden extern const long EIO;
-hidden extern const long ENXIO;
-hidden extern const long E2BIG;
-hidden extern const long ENOEXEC;
-hidden extern const long EBADF;
-hidden extern const long ECHILD;
-hidden extern const long EAGAIN;
-hidden extern const long ENOMEM;
-hidden extern const long EACCES;
-hidden extern const long EFAULT;
-hidden extern const long ENOTBLK;
-hidden extern const long EBUSY;
-hidden extern const long EEXIST;
-hidden extern const long EXDEV;
-hidden extern const long ENODEV;
-hidden extern const long ENOTDIR;
-hidden extern const long EISDIR;
-hidden extern const long EINVAL;
-hidden extern const long ENFILE;
-hidden extern const long EMFILE;
-hidden extern const long ENOTTY;
-hidden extern const long ETXTBSY;
-hidden extern const long EFBIG;
-hidden extern const long ENOSPC;
-hidden extern const long ESPIPE;
-hidden extern const long EROFS;
-hidden extern const long EMLINK;
-hidden extern const long EPIPE;
-hidden extern const long EDOM;
-hidden extern const long ERANGE;
-hidden extern const long EDEADLK;
-hidden extern const long ENAMETOOLONG;
-hidden extern const long ENOLCK;
-hidden extern const long ENOSYS;
-hidden extern const long ENOTEMPTY;
-hidden extern const long ELOOP;
-hidden extern const long ENOMSG;
-hidden extern const long EIDRM;
-hidden extern const long ECHRNG;
-hidden extern const long EL2NSYNC;
-hidden extern const long EL3HLT;
-hidden extern const long EL3RST;
-hidden extern const long ELNRNG;
-hidden extern const long EUNATCH;
-hidden extern const long ENOCSI;
-hidden extern const long EL2HLT;
-hidden extern const long EBADE;
-hidden extern const long EBADR;
-hidden extern const long EXFULL;
-hidden extern const long ENOANO;
-hidden extern const long EBADRQC;
-hidden extern const long EBADSLT;
-hidden extern const long ENOSTR;
-hidden extern const long ENODATA;
-hidden extern const long ETIME;
-hidden extern const long ENOSR;
-hidden extern const long ENONET;
-hidden extern const long ENOPKG;
-hidden extern const long EREMOTE;
-hidden extern const long ENOLINK;
-hidden extern const long EADV;
-hidden extern const long ESRMNT;
-hidden extern const long ECOMM;
-hidden extern const long EPROTO;
-hidden extern const long EMULTIHOP;
-hidden extern const long EDOTDOT;
-hidden extern const long EBADMSG;
-hidden extern const long EOVERFLOW;
-hidden extern const long ENOTUNIQ;
-hidden extern const long EBADFD;
-hidden extern const long EREMCHG;
-hidden extern const long ELIBACC;
-hidden extern const long ELIBBAD;
-hidden extern const long ELIBSCN;
-hidden extern const long ELIBMAX;
-hidden extern const long ELIBEXEC;
-hidden extern const long EILSEQ;
-hidden extern const long ERESTART;
-hidden extern const long ESTRPIPE;
-hidden extern const long EUSERS;
-hidden extern const long ENOTSOCK;
-hidden extern const long EDESTADDRREQ;
-hidden extern const long EMSGSIZE;
-hidden extern const long EPROTOTYPE;
-hidden extern const long ENOPROTOOPT;
-hidden extern const long EPROTONOSUPPORT;
-hidden extern const long ESOCKTNOSUPPORT;
-hidden extern const long EOPNOTSUPP;
-hidden extern const long EPFNOSUPPORT;
-hidden extern const long EAFNOSUPPORT;
-hidden extern const long EADDRINUSE;
-hidden extern const long EADDRNOTAVAIL;
-hidden extern const long ENETDOWN;
-hidden extern const long ENETUNREACH;
-hidden extern const long ENETRESET;
-hidden extern const long ECONNABORTED;
-hidden extern const long ECONNRESET;
-hidden extern const long ENOBUFS;
-hidden extern const long EISCONN;
-hidden extern const long ENOTCONN;
-hidden extern const long ESHUTDOWN;
-hidden extern const long ETOOMANYREFS;
-hidden extern const long ETIMEDOUT;
-hidden extern const long ECONNREFUSED;
-hidden extern const long EHOSTDOWN;
-hidden extern const long EHOSTUNREACH;
-hidden extern const long EALREADY;
-hidden extern const long EINPROGRESS;
-hidden extern const long ESTALE;
-hidden extern const long EUCLEAN;
-hidden extern const long ENOTNAM;
-hidden extern const long ENAVAIL;
-hidden extern const long EISNAM;
-hidden extern const long EREMOTEIO;
-hidden extern const long EDQUOT;
-hidden extern const long ENOMEDIUM;
-hidden extern const long EMEDIUMTYPE;
-hidden extern const long ECANCELED;
-hidden extern const long ENOKEY;
-hidden extern const long EKEYEXPIRED;
-hidden extern const long EKEYREVOKED;
-hidden extern const long EKEYREJECTED;
-hidden extern const long EOWNERDEAD;
-hidden extern const long ENOTRECOVERABLE;
-hidden extern const long ERFKILL;
-hidden extern const long EHWPOISON;
-hidden extern const long ENOTSUP;
+#if defined(__GNUC__) && defined(__aarch64__) && !defined(__STRICT_ANSI__) && \
+    !defined(__cplusplus)
+/* this header is included by 700+ files; therefore we */
+/* hand-roll &__get_tls()->tib_errno to avoid #include */
+/* cosmopolitan uses x28 as the tls register b/c apple */
+#define errno                                  \
+  (*({                                         \
+    errno_t *__ep;                             \
+    asm("sub\t%0,x28,#192-0x3c" : "=r"(__ep)); \
+    __ep;                                      \
+  }))
+#else
+#define errno (*__errno_location())
+#endif
+
+/**
+ * System call unavailable.
+ * @note kNtErrorInvalidFunction on NT
+ */
+extern const errno_t ENOSYS;
+
+/**
+ * Operation not permitted.
+ * @note kNtErrorInvalidAccess on NT
+ */
+extern const errno_t EPERM;
+
+/**
+ * No such file or directory.
+ */
+extern const errno_t ENOENT;
+
+/**
+ * No such process.
+ */
+extern const errno_t ESRCH;
+
+/**
+ * The greatest of all errnos.
+ */
+extern const errno_t EINTR;
+
+/**
+ * Unix consensus.
+ */
+extern const errno_t EIO;
+
+/**
+ * No such device or address.
+ */
+extern const errno_t ENXIO;
+
+/**
+ * Argument list too errno_t.
+ */
+extern const errno_t E2BIG;
+
+/**
+ * Exec format error.
+ */
+extern const errno_t ENOEXEC;
+
+/**
+ * Bad file descriptor.
+ */
+extern const errno_t EBADF;
+
+/**
+ * No child process.
+ */
+extern const errno_t ECHILD;
+
+/**
+ * Resource temporarily unavailable (e.g. SO_RCVTIMEO expired, too many
+ * processes, too much memory locked, read or write with O_NONBLOCK needs
+ * polling, etc.).
+ */
+extern const errno_t EAGAIN;
+
+/**
+ * We require more vespene gas.
+ */
+extern const errno_t ENOMEM;
+
+/**
+ * Permission denied.
+ */
+extern const errno_t EACCES;
+
+/**
+ * Pointer passed to system call that would otherwise segfault.
+ */
+extern const errno_t EFAULT;
+
+/**
+ * Block device required.
+ */
+extern const errno_t ENOTBLK;
+
+/**
+ * Device or resource busy.
+ */
+extern const errno_t EBUSY;
+
+/**
+ * File exists.
+ */
+extern const errno_t EEXIST;
+
+/**
+ * Improper link.
+ */
+extern const errno_t EXDEV;
+
+/**
+ * No such device.
+ */
+extern const errno_t ENODEV;
+
+/**
+ * Not a directory.
+ */
+extern const errno_t ENOTDIR;
+
+/**
+ * Is a a directory.
+ */
+extern const errno_t EISDIR;
+
+/**
+ * Invalid argument.
+ */
+extern const errno_t EINVAL;
+
+/**
+ * Too many open files in system.
+ */
+extern const errno_t ENFILE;
+
+/**
+ * Too many open files.
+ */
+extern const errno_t EMFILE;
+
+/**
+ * Inappropriate i/o control operation.
+ */
+extern const errno_t ENOTTY;
+
+/**
+ * Won't open executable that's executing in write mode.
+ */
+extern const errno_t ETXTBSY;
+
+/**
+ * File too large.
+ */
+extern const errno_t EFBIG;
+
+/**
+ * No space left on device.
+ */
+extern const errno_t ENOSPC;
+
+/**
+ * Disk quota exceeded.
+ */
+extern const errno_t EDQUOT;
+
+/**
+ * Invalid seek.
+ */
+extern const errno_t ESPIPE;
+
+/**
+ * Read-only filesystem.
+ */
+extern const errno_t EROFS;
+
+/**
+ * Too many links.
+ */
+extern const errno_t EMLINK;
+
+/**
+ * Broken pipe.
+ */
+extern const errno_t EPIPE;
+
+/**
+ * Mathematics argument out of domain of function.
+ */
+extern const errno_t EDOM;
+
+/**
+ * Result too large.
+ */
+extern const errno_t ERANGE;
+
+/**
+ * Resource deadlock avoided.
+ */
+extern const errno_t EDEADLK;
+
+/**
+ * Filename too errno_t.
+ */
+extern const errno_t ENAMETOOLONG;
+
+/**
+ * No locks available.
+ */
+extern const errno_t ENOLCK;
+
+/**
+ * Directory not empty.
+ */
+extern const errno_t ENOTEMPTY;
+
+/**
+ * Too many levels of symbolic links.
+ */
+extern const errno_t ELOOP;
+
+/**
+ * No message error.
+ */
+extern const errno_t ENOMSG;
+
+/**
+ * Identifier removed.
+ */
+extern const errno_t EIDRM;
+
+/**
+ * Timer expired.
+ */
+extern const errno_t ETIME;
+
+/**
+ * Protocol error.
+ */
+extern const errno_t EPROTO;
+
+/**
+ * Overflow error.
+ */
+extern const errno_t EOVERFLOW;
+
+/**
+ * Unicode decoding error.
+ */
+extern const errno_t EILSEQ;
+
+/**
+ * Too many users.
+ */
+extern const errno_t EUSERS;
+
+/**
+ * Not a socket.
+ */
+extern const errno_t ENOTSOCK;
+
+/**
+ * Destination address required.
+ */
+extern const errno_t EDESTADDRREQ;
+
+/**
+ * Message too errno_t.
+ */
+extern const errno_t EMSGSIZE;
+
+/**
+ * Protocol wrong type for socket.
+ */
+extern const errno_t EPROTOTYPE;
+
+/**
+ * Protocol not available.
+ */
+extern const errno_t ENOPROTOOPT;
+
+/**
+ * Protocol not supported.
+ */
+extern const errno_t EPROTONOSUPPORT;
+
+/**
+ * Socket type not supported.
+ */
+extern const errno_t ESOCKTNOSUPPORT;
+
+/**
+ * Operation not supported.
+ */
+extern const errno_t ENOTSUP;
+
+/**
+ * Socket operation not supported.
+ */
+extern const errno_t EOPNOTSUPP;
+
+/**
+ * Protocol family not supported.
+ */
+extern const errno_t EPFNOSUPPORT;
+
+/**
+ * Address family not supported.
+ */
+extern const errno_t EAFNOSUPPORT;
+
+/**
+ * Address already in use.
+ */
+extern const errno_t EADDRINUSE;
+
+/**
+ * Address not available.
+ */
+extern const errno_t EADDRNOTAVAIL;
+
+/**
+ * Network is down.
+ */
+extern const errno_t ENETDOWN;
+
+/**
+ * Host is unreachable.
+ */
+extern const errno_t ENETUNREACH;
+
+/**
+ * Connection reset by network.
+ */
+extern const errno_t ENETRESET;
+
+/**
+ * Connection reset before accept.
+ */
+extern const errno_t ECONNABORTED;
+
+/**
+ * Connection reset by client.
+ */
+extern const errno_t ECONNRESET;
+
+/**
+ * No buffer space available.
+ */
+extern const errno_t ENOBUFS;
+
+/**
+ * Socket is connected.
+ */
+extern const errno_t EISCONN;
+
+/**
+ * Socket is not connected.
+ */
+extern const errno_t ENOTCONN;
+
+/**
+ * Cannot send after transport endpoint shutdown.
+ */
+extern const errno_t ESHUTDOWN;
+
+/**
+ * Too many references: cannot splice.
+ */
+extern const errno_t ETOOMANYREFS;
+
+/**
+ * Connection timed out.
+ */
+extern const errno_t ETIMEDOUT;
+
+/**
+ * Connection refused error.
+ */
+extern const errno_t ECONNREFUSED;
+
+/**
+ * Host down error.
+ */
+extern const errno_t EHOSTDOWN;
+
+/**
+ * Host unreachable error.
+ */
+extern const errno_t EHOSTUNREACH;
+
+/**
+ * Connection already in progress.
+ */
+extern const errno_t EALREADY;
+
+/**
+ * Operation already in progress.
+ */
+extern const errno_t EINPROGRESS;
+
+/**
+ * Stale error.
+ */
+extern const errno_t ESTALE;
+
+/**
+ * Remote error.
+ */
+extern const errno_t EREMOTE;
+
+/**
+ * Bad message.
+ */
+extern const errno_t EBADMSG;
+
+/**
+ * Operation canceled.
+ */
+extern const errno_t ECANCELED;
+
+/**
+ * Owner died.
+ */
+extern const errno_t EOWNERDEAD;
+
+/**
+ * State not recoverable.
+ */
+extern const errno_t ENOTRECOVERABLE;
+
+/**
+ * No network.
+ */
+extern const errno_t ENONET;
+
+/**
+ * Please restart syscall.
+ */
+extern const errno_t ERESTART;
+
+/**
+ * Out of streams resources.
+ */
+extern const errno_t ENOSR;
+
+/**
+ * No string.
+ */
+extern const errno_t ENOSTR;
+
+/**
+ * No data.
+ */
+extern const errno_t ENODATA;
+
+/**
+ * Multihop attempted.
+ */
+extern const errno_t EMULTIHOP;
+
+/**
+ * Link severed.
+ */
+extern const errno_t ENOLINK;
+
+/**
+ * No medium found.
+ */
+extern const errno_t ENOMEDIUM;
+
+/**
+ * Wrong medium type.
+ */
+extern const errno_t EMEDIUMTYPE;
+
+/**
+ * Inappropriate file type or format.
+ */
+extern const errno_t EFTYPE;
+
+extern const errno_t EAUTH;
+extern const errno_t EBADARCH;
+extern const errno_t EBADEXEC;
+extern const errno_t EBADMACHO;
+extern const errno_t EBADRPC;
+extern const errno_t EDEVERR;
+extern const errno_t ENEEDAUTH;
+extern const errno_t ENOATTR;
+extern const errno_t ENOPOLICY;
+extern const errno_t EPROCLIM;
+extern const errno_t EPROCUNAVAIL;
+extern const errno_t EPROGMISMATCH;
+extern const errno_t EPROGUNAVAIL;
+extern const errno_t EPWROFF;
+extern const errno_t ERPCMISMATCH;
+extern const errno_t ESHLIBVERS;
+extern const errno_t EADV;
+extern const errno_t EBADE;
+extern const errno_t EBADFD;
+extern const errno_t EBADR;
+extern const errno_t EBADRQC;
+extern const errno_t EBADSLT;
+extern const errno_t ECHRNG;
+extern const errno_t ECOMM;
+extern const errno_t EDOTDOT;
+extern const errno_t EHWPOISON;
+extern const errno_t EISNAM;
+extern const errno_t EKEYEXPIRED;
+extern const errno_t EKEYREJECTED;
+extern const errno_t EKEYREVOKED;
+extern const errno_t EL2HLT;
+extern const errno_t EL2NSYNC;
+extern const errno_t EL3HLT;
+extern const errno_t EL3RST;
+extern const errno_t ELIBACC;
+extern const errno_t ELIBBAD;
+extern const errno_t ELIBEXEC;
+extern const errno_t ELIBMAX;
+extern const errno_t ELIBSCN;
+extern const errno_t ELNRNG;
+extern const errno_t ENAVAIL;
+extern const errno_t ENOANO;
+extern const errno_t ENOCSI;
+extern const errno_t ENOKEY;
+extern const errno_t ENOPKG;
+extern const errno_t ENOTNAM;
+extern const errno_t ENOTUNIQ;
+extern const errno_t EREMCHG;
+extern const errno_t EREMOTEIO;
+extern const errno_t ERFKILL;
+extern const errno_t ESRMNT;
+extern const errno_t ESTRPIPE;
+extern const errno_t EUCLEAN;
+extern const errno_t EUNATCH;
+extern const errno_t EXFULL;
+
+#define E2BIG           E2BIG
+#define EACCES          EACCES
+#define EADDRINUSE      EADDRINUSE
+#define EADDRNOTAVAIL   EADDRNOTAVAIL
+#define EAFNOSUPPORT    EAFNOSUPPORT
+#define EAGAIN          EAGAIN
+#define EALREADY        EALREADY
+#define EBADF           EBADF
+#define EBADMSG         EBADMSG
+#define EBUSY           EBUSY
+#define ECANCELED       ECANCELED
+#define ECHILD          ECHILD
+#define ECONNABORTED    ECONNABORTED
+#define ECONNREFUSED    ECONNREFUSED
+#define ECONNRESET      ECONNRESET
+#define EDEADLK         EDEADLK
+#define EDESTADDRREQ    EDESTADDRREQ
+#define EDOM            EDOM
+#define EDQUOT          EDQUOT
+#define EEXIST          EEXIST
+#define EFAULT          EFAULT
+#define EFBIG           EFBIG
+#define EFTYPE          EFTYPE
+#define EHOSTDOWN       EHOSTDOWN
+#define EHOSTUNREACH    EHOSTUNREACH
+#define EIDRM           EIDRM
+#define EILSEQ          EILSEQ
+#define EINPROGRESS     EINPROGRESS
+#define EINTR           EINTR
+#define EINVAL          EINVAL
+#define EIO             EIO
+#define EISCONN         EISCONN
+#define EISDIR          EISDIR
+#define ELOOP           ELOOP
+#define EMEDIUMTYPE     EMEDIUMTYPE
+#define EMFILE          EMFILE
+#define EMLINK          EMLINK
+#define EMSGSIZE        EMSGSIZE
+#define EMULTIHOP       EMULTIHOP
+#define ENAMETOOLONG    ENAMETOOLONG
+#define ENETDOWN        ENETDOWN
+#define ENETRESET       ENETRESET
+#define ENETUNREACH     ENETUNREACH
+#define ENFILE          ENFILE
+#define ENOBUFS         ENOBUFS
+#define ENODATA         ENODATA
+#define ENODEV          ENODEV
+#define ENOENT          ENOENT
+#define ENOEXEC         ENOEXEC
+#define ENOLCK          ENOLCK
+#define ENOLINK         ENOLINK
+#define ENOMEDIUM       ENOMEDIUM
+#define ENOMEM          ENOMEM
+#define ENOMSG          ENOMSG
+#define ENONET          ENONET
+#define ENOPROTOOPT     ENOPROTOOPT
+#define ENOSPC          ENOSPC
+#define ENOSR           ENOSR
+#define ENOSTR          ENOSTR
+#define ENOSYS          ENOSYS
+#define ENOTBLK         ENOTBLK
+#define ENOTCONN        ENOTCONN
+#define ENOTDIR         ENOTDIR
+#define ENOTEMPTY       ENOTEMPTY
+#define ENOTRECOVERABLE ENOTRECOVERABLE
+#define ENOTSOCK        ENOTSOCK
+#define ENOTSUP         ENOTSUP
+#define ENOTTY          ENOTTY
+#define ENXIO           ENXIO
+#define EOPNOTSUPP      EOPNOTSUPP
+#define EOVERFLOW       EOVERFLOW
+#define EOWNERDEAD      EOWNERDEAD
+#define EPERM           EPERM
+#define EPFNOSUPPORT    EPFNOSUPPORT
+#define EPIPE           EPIPE
+#define EPROTO          EPROTO
+#define EPROTONOSUPPORT EPROTONOSUPPORT
+#define EPROTOTYPE      EPROTOTYPE
+#define ERANGE          ERANGE
+#define EREMOTE         EREMOTE
+#define ERESTART        ERESTART
+#define EROFS           EROFS
+#define ESHUTDOWN       ESHUTDOWN
+#define ESOCKTNOSUPPORT ESOCKTNOSUPPORT
+#define ESPIPE          ESPIPE
+#define ESRCH           ESRCH
+#define ESTALE          ESTALE
+#define ETIME           ETIME
+#define ETIMEDOUT       ETIMEDOUT
+#define ETOOMANYREFS    ETOOMANYREFS
+#define ETXTBSY         ETXTBSY
+#define EUSERS          EUSERS
+#define EWOULDBLOCK     EAGAIN
+#define EXDEV           EXDEV
+
+extern errno_t __errno;
+errno_t *__errno_location(void) dontthrow pureconst;
+
+#if defined(_COSMO_SOURCE) || defined(_GNU_SOURCE)
+extern char *program_invocation_short_name;
+extern char *program_invocation_name;
+#endif
 
 COSMOPOLITAN_C_END_
-#endif /* !(__ASSEMBLER__ + __LINKER__ + 0) */
 #endif /* COSMOPOLITAN_LIBC_ERRNO_H_ */

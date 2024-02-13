@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -31,5 +31,5 @@ void(pmulhrsw)(int16_t a[8], const int16_t b[8], const int16_t c[8]) {
   unsigned i;
   int16_t r[8];
   for (i = 0; i < 8; ++i) r[i] = (((b[i] * c[i]) >> 14) + 1) >> 1;
-  memcpy(a, r, 16);
+  __builtin_memcpy(a, r, 16);
 }

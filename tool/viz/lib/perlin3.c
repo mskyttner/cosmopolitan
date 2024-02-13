@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,8 +16,6 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/bits/bits.h"
-#include "libc/bits/initializer.internal.h"
 #include "libc/macros.internal.h"
 #include "libc/math.h"
 #include "tool/viz/lib/graphic.h"
@@ -97,12 +95,10 @@ static const uint8_t kPerm[] = {
     180,
 };
 
-static nooptimize textstartup void init(void) {
+__attribute__((__constructor__)) static void init(void) {
   unsigned i;
   for (i = 0; i < 256; ++i) {
     perm[i] = kPerm[i];
     perm[i + 256] = kPerm[i];
   }
 }
-
-INITIALIZER(400, _init_perlin3, init());

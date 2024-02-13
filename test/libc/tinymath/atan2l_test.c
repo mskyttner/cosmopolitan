@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -17,16 +17,20 @@
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
 #include "libc/math.h"
-#include "libc/runtime/gc.internal.h"
+#include "libc/mem/gc.h"
 #include "libc/testlib/testlib.h"
 #include "libc/x/x.h"
+#include "libc/x/xasprintf.h"
 
 TEST(atan2l, test) {
   volatile double a = -.9816175436063843;
   volatile double b = -.1908585813741899;
   EXPECT_STREQ("-2.95", gc(xasprintf("%.2f", atan2f(b, a))));
   EXPECT_STREQ("-2.95", gc(xasprintf("%.2f", atan2(b, a))));
+#ifndef __aarch64__
+  // TODO: implement quad floating point into printf
   EXPECT_STREQ("-2.95", gc(xasprintf("%.2Lf", atan2l(b, a))));
+#endif
 }
 
 TEST(atan2, testSpecialCases) {

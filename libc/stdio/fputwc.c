@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -17,24 +17,20 @@
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
 #include "libc/stdio/stdio.h"
-#include "libc/str/tpenc.h"
 
 /**
  * Writes wide character to stream.
  *
- * @return wc if written or -1 w/ errno
+ * @param wc has wide character
+ * @param f is file object stream pointer
+ * @return wide character if written or -1 w/ errno
  */
 wint_t fputwc(wchar_t wc, FILE *f) {
-  uint64_t w;
-  if (wc != -1) {
-    w = tpenc(wc);
-    do {
-      if (fputc(w, f) == -1) {
-        return -1;
-      }
-    } while ((w >>= 8));
-    return wc;
-  } else {
-    return -1;
-  }
+  wint_t rc;
+  flockfile(f);
+  rc = fputwc_unlocked(wc, f);
+  funlockfile(f);
+  return rc;
 }
+
+__strong_reference(fputwc, putwc);

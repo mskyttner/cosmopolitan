@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2021 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,6 +16,7 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
+#include "libc/mem/mem.h"
 #include "libc/str/str.h"
 #include "libc/x/x.h"
 #include "net/http/escape.h"
@@ -32,7 +33,7 @@
 char *IndentLines(const char *p, size_t n, size_t *z, size_t j) {
   char *r, *q;
   const char *l;
-  size_t i, t, m, a;
+  size_t t, m, a;
   if (n == -1) n = p ? strlen(p) : 0;
   r = 0;
   t = 0;

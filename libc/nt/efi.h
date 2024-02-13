@@ -97,17 +97,41 @@
       0x8E, 0x3F, 0x00, 0xA0, 0xC9, 0x69, 0x72, 0x3B \
     }                                                \
   }
+#define GRAPHICS_OUTPUT_PROTOCOL                     \
+  {                                                  \
+    0x9042A9DE, 0x23DC, 0x4A38, {                    \
+      0x96, 0xFB, 0x7A, 0xDE, 0xD0, 0x80, 0x51, 0x6A \
+    }                                                \
+  }
+#define ACPI_20_TABLE_GUID                           \
+  {                                                  \
+    0x8868E871, 0xE4F1, 0x11D3, {                    \
+      0xBC, 0x22, 0x00, 0x80, 0xC7, 0x3C, 0x88, 0x81 \
+    }                                                \
+  }
+#define ACPI_10_TABLE_GUID                           \
+  {                                                  \
+    0xEB9D2D30, 0x2D88, 0x11D3, {                    \
+      0x9A, 0x16, 0x00, 0x90, 0x27, 0x3F, 0xC1, 0x4D \
+    }                                                \
+  }
 
-#if !(__ASSEMBLER__ + __LINKER__ + 0)
 COSMOPOLITAN_C_START_
 
-#define EFIAPI     __attribute__((__ms_abi__))
+#if defined(__GNUC__) && __GNUC__ >= 6 && !defined(__chibicc__) && \
+    defined(__x86_64__)
+#define EFIAPI __attribute__((__ms_abi__))
+#else
+#define EFIAPI /* TODO(jart): fix me */
+#endif
+
 #define EFI_STATUS uint64_t
 #define EFI_EVENT  uintptr_t
 #define EFI_HANDLE uintptr_t
 
 typedef struct _EFI_SIMPLE_TEXT_INPUT_PROTOCOL EFI_SIMPLE_TEXT_INPUT_PROTOCOL;
 typedef struct _EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL;
+typedef struct _EFI_GRAPHICS_OUTPUT_PROTOCOL EFI_GRAPHICS_OUTPUT_PROTOCOL;
 
 typedef enum {
   EfiReservedMemoryType,
@@ -151,7 +175,7 @@ typedef enum {
 typedef struct {
   uint32_t Resolution;
   uint32_t Accuracy;
-  bool SetsToZero;
+  bool32 SetsToZero;
 } EFI_TIME_CAPABILITIES;
 
 typedef struct {
@@ -206,8 +230,56 @@ typedef struct {
   int32_t Attribute;
   int32_t CursorColumn;
   int32_t CursorRow;
-  bool CursorVisible;
+  bool32 CursorVisible;
 } EFI_SIMPLE_TEXT_OUTPUT_MODE;
+
+typedef enum {
+  PixelRedGreenBlueReserved8BitPerColor,
+  PixelBlueGreenRedReserved8BitPerColor,
+  PixelBitMask,
+  PixelBltOnly,
+  PixelFormatMax
+} EFI_GRAPHICS_PIXEL_FORMAT;
+
+typedef struct {
+  uint32_t RedMask;
+  uint32_t GreenMask;
+  uint32_t BlueMask;
+  uint32_t ReservedMask;
+} EFI_PIXEL_BITMASK;
+
+typedef struct {
+  uint32_t Version;
+  uint32_t HorizontalResolution;
+  uint32_t VerticalResolution;
+  EFI_GRAPHICS_PIXEL_FORMAT PixelFormat;
+  EFI_PIXEL_BITMASK PixelInformation;
+  uint32_t PixelsPerScanLine;
+} EFI_GRAPHICS_OUTPUT_MODE_INFORMATION;
+
+typedef struct {
+  uint8_t Blue;
+  uint8_t Green;
+  uint8_t Red;
+  uint8_t Reserved;
+} EFI_GRAPHICS_OUTPUT_BLT_PIXEL;
+
+typedef enum {
+  EfiBltVideoFill,
+  EfiBltVideoToBltBuffer,
+  EfiBltBufferToVideo,
+  EfiBltVideoToVideo,
+  EfiGraphicsOutputBltOperationMax
+} EFI_GRAPHICS_OUTPUT_BLT_OPERATION;
+
+typedef struct {
+  uint32_t MaxMode;
+  uint32_t Mode;
+  EFI_GRAPHICS_OUTPUT_MODE_INFORMATION *Info;
+  uint32_t SizeOfInfo;
+  uint64_t FrameBufferBase;
+  uint32_t FrameBufferSize;
+} EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE;
 
 typedef struct {
   uint64_t Signature;
@@ -286,15 +358,18 @@ typedef EFI_STATUS(EFIAPI *EFI_UPDATE_CAPSULE)(
 typedef EFI_STATUS(EFIAPI *EFI_QUERY_CAPSULE_CAPABILITIES)(
     EFI_CAPSULE_HEADER **CapsuleHeaderArray, uintptr_t CapsuleCount,
     uint64_t *out_MaximumCapsuleSize, EFI_RESET_TYPE *out_ResetType);
-typedef EFI_STATUS(EFIAPI *EFI_GET_WAKEUP_TIME)(bool *out_Enabled,
-                                                bool *out_Pending,
+typedef EFI_STATUS(EFIAPI *EFI_GET_WAKEUP_TIME)(bool32 *out_Enabled,
+                                                bool32 *out_Pending,
                                                 EFI_TIME *out_Time);
-typedef EFI_STATUS(EFIAPI *EFI_SET_WAKEUP_TIME)(bool Enable,
+typedef EFI_STATUS(EFIAPI *EFI_SET_WAKEUP_TIME)(bool32 Enable,
                                                 EFI_TIME *opt_Time);
 typedef EFI_STATUS(EFIAPI *EFI_SET_WATCHDOG_TIMER)(uintptr_t Timeout,
                                                    uint64_t WatchdogCode,
                                                    uintptr_t DataSize,
                                                    char16_t *opt_WatchdogData);
+typedef EFI_STATUS(EFIAPI *EFI_LOCATE_PROTOCOL)(EFI_GUID *Protocol,
+                                                void *Registration,
+                                                void *Interface);
 
 typedef EFI_STATUS(EFIAPI *EFI_SET_TIME)(EFI_TIME *Time);
 typedef EFI_STATUS(EFIAPI *EFI_GET_TIME)(
@@ -314,12 +389,12 @@ typedef EFI_STATUS(EFIAPI *EFI_CONVERT_POINTER)(uintptr_t DebugDisposition,
                                                 void **inout_Address);
 
 typedef EFI_STATUS(EFIAPI *EFI_INPUT_RESET)(
-    EFI_SIMPLE_TEXT_INPUT_PROTOCOL *This, bool ExtendedVerification);
+    EFI_SIMPLE_TEXT_INPUT_PROTOCOL *This, bool32 ExtendedVerification);
 typedef EFI_STATUS(EFIAPI *EFI_INPUT_READ_KEY)(
     EFI_SIMPLE_TEXT_INPUT_PROTOCOL *This, EFI_INPUT_KEY *out_Key);
 
 typedef EFI_STATUS(EFIAPI *EFI_TEXT_RESET)(
-    EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *This, bool ExtendedVerification);
+    EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *This, bool32 ExtendedVerification);
 typedef EFI_STATUS(EFIAPI *EFI_TEXT_STRING)(
     EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *This, char16_t *String);
 typedef EFI_STATUS(EFIAPI *EFI_TEXT_TEST_STRING)(
@@ -336,13 +411,25 @@ typedef EFI_STATUS(EFIAPI *EFI_TEXT_CLEAR_SCREEN)(
 typedef EFI_STATUS(EFIAPI *EFI_TEXT_SET_CURSOR_POSITION)(
     EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *This, uint64_t Column, uint64_t Row);
 typedef EFI_STATUS(EFIAPI *EFI_TEXT_ENABLE_CURSOR)(
-    EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *This, bool Visible);
+    EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *This, bool32 Visible);
+
+typedef EFI_STATUS(EFIAPI *EFI_GRAPHICS_OUTPUT_PROTOCOL_QUERY_MODE)(
+    EFI_GRAPHICS_OUTPUT_PROTOCOL *This, uint32_t ModeNumber,
+    uint32_t *SizeOfInfo, EFI_GRAPHICS_OUTPUT_MODE_INFORMATION **Info);
+typedef EFI_STATUS(EFIAPI *EFI_GRAPHICS_OUTPUT_PROTOCOL_SET_MODE)(
+    EFI_GRAPHICS_OUTPUT_PROTOCOL *This, uint32_t ModeNumber);
+typedef EFI_STATUS(EFIAPI *EFI_GRAPHICS_OUTPUT_PROTOCOL_BLT)(
+    EFI_GRAPHICS_OUTPUT_PROTOCOL *This,
+    EFI_GRAPHICS_OUTPUT_BLT_PIXEL *BltBuffer,
+    EFI_GRAPHICS_OUTPUT_BLT_OPERATION BltOperation, uint32_t SourceX,
+    uint32_t SourceY, uint32_t DestinationX, uint32_t DestinationY,
+    uint32_t Width, uint32_t Height, uint32_t Delta);
 
 typedef EFI_STATUS(EFIAPI *EFI_HANDLE_PROTOCOL)(EFI_HANDLE Handle,
                                                 EFI_GUID *Protocol,
                                                 void *out_Interface);
 
-typedef EFI_STATUS(EFIAPI *EFI_IMAGE_LOAD)(bool BootPolicy,
+typedef EFI_STATUS(EFIAPI *EFI_IMAGE_LOAD)(bool32 BootPolicy,
                                            EFI_HANDLE ParentImageHandle,
                                            EFI_DEVICE_PATH_PROTOCOL *DevicePath,
                                            void *opt_SourceBuffer,
@@ -409,7 +496,7 @@ typedef struct {
   void *OpenProtocolInformation;
   void *ProtocolsPerHandle;
   void *LocateHandleBuffer;
-  void *LocateProtocol;
+  EFI_LOCATE_PROTOCOL LocateProtocol;
   void *InstallMultipleProtocolInterfaces;
   void *UninstallMultipleProtocolInterfaces;
   void *CalculateCrc32;
@@ -453,6 +540,13 @@ struct _EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL {
   EFI_SIMPLE_TEXT_OUTPUT_MODE *Mode;
 };
 
+struct _EFI_GRAPHICS_OUTPUT_PROTOCOL {
+  EFI_GRAPHICS_OUTPUT_PROTOCOL_QUERY_MODE QueryMode;
+  EFI_GRAPHICS_OUTPUT_PROTOCOL_SET_MODE SetMode;
+  EFI_GRAPHICS_OUTPUT_PROTOCOL_BLT Blt;
+  EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE *Mode;
+};
+
 typedef struct {
   uint32_t Revision;
   EFI_HANDLE ParentHandle;
@@ -470,5 +564,4 @@ typedef struct {
 } EFI_LOADED_IMAGE;
 
 COSMOPOLITAN_C_END_
-#endif /* !(__ASSEMBLER__ + __LINKER__ + 0) */
 #endif /* COSMOPOLITAN_LIBC_NT_EFI_H_ */

@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,39 +16,26 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
+#include "ape/sections.internal.h"
 #include "libc/calls/calls.h"
 #include "libc/calls/internal.h"
+#include "libc/calls/state.internal.h"
+#include "libc/calls/struct/metasigaltstack.h"
+#include "libc/calls/struct/sigaction.h"
+#include "libc/calls/struct/siginfo-meta.internal.h"
+#include "libc/calls/struct/siginfo-xnu.internal.h"
 #include "libc/calls/struct/siginfo.h"
 #include "libc/calls/ucontext.h"
+#include "libc/intrin/repstosb.h"
+#include "libc/log/libfatal.internal.h"
+#include "libc/runtime/runtime.h"
+#include "libc/runtime/stack.h"
 #include "libc/str/str.h"
+#include "libc/sysv/consts/sa.h"
 
 /**
  * @fileoverview XNU kernel callback normalization.
  */
-
-union __darwin_sigval {
-  int32_t sival_int;
-  void *sival_ptr;
-};
-
-struct __darwin_siginfo {
-  int32_t si_signo;
-  int32_t si_errno;
-  int32_t si_code;
-  int32_t si_pid;
-  uint32_t si_uid;
-  int32_t si_status;
-  void *si_addr;
-  union __darwin_sigval si_value;
-  int64_t si_band;
-  uint64_t __pad[7];
-};
-
-struct __darwin_sigaltstack {
-  void *ss_sp;
-  uint64_t ss_size;
-  int32_t ss_flags;
-};
 
 struct __darwin_mmst_reg {
   char __mmst_reg[10];
@@ -358,35 +345,64 @@ struct __darwin_mcontext_avx512_64_full {
   struct __darwin_x86_avx512_state64 __fs;
 };
 
+struct __darwin_arm_exception_state64 {
+  uint64_t far;
+  uint32_t esr;
+  uint32_t exception;
+};
+
+struct __darwin_arm_thread_state64 {
+  uint64_t __x[29];
+  uint64_t __fp;
+  uint64_t __lr;
+  uint64_t __sp;
+  uint64_t __pc;
+  uint32_t __cpsr;
+  uint32_t __pad;
+};
+
+struct __darwin_arm_vfp_state {
+  uint32_t __r[64];
+  uint32_t __fpscr;
+};
+
 struct __darwin_mcontext64 {
+#ifdef __x86_64__
   struct __darwin_x86_exception_state64 __es;
   struct __darwin_x86_thread_state64 __ss;
   struct __darwin_x86_float_state64 __fs;
+#elif defined(__aarch64__)
+  struct __darwin_arm_exception_state64 __es;
+  struct __darwin_arm_thread_state64 __ss;
+  struct __darwin_arm_vfp_state __fs;
+#endif
 };
 
 struct __darwin_ucontext {
   int32_t uc_onstack;
   uint32_t uc_sigmask;
-  struct __darwin_sigaltstack uc_stack;
+  struct sigaltstack_bsd uc_stack;
   struct __darwin_ucontext *uc_link;
   uint64_t uc_mcsize;
   struct __darwin_mcontext64 *uc_mcontext;
 };
 
-noasan static void xnuexceptionstate2linux(
+#ifdef __x86_64__
+
+static privileged void xnuexceptionstate2linux(
     mcontext_t *mc, struct __darwin_x86_exception_state64 *xnues) {
   mc->trapno = xnues->__trapno;
   mc->err = xnues->__err;
 }
 
-noasan static void linuxexceptionstate2xnu(
+static privileged void linuxexceptionstate2xnu(
     struct __darwin_x86_exception_state64 *xnues, mcontext_t *mc) {
   xnues->__trapno = mc->trapno;
   xnues->__err = mc->err;
 }
 
-noasan static void xnuthreadstate2linux(
-    ucontext_t *uc, mcontext_t *mc, struct __darwin_x86_thread_state64 *xnuss) {
+static privileged void xnuthreadstate2linux(
+    mcontext_t *mc, struct __darwin_x86_thread_state64 *xnuss) {
   mc->rdi = xnuss->__rdi;
   mc->rsi = xnuss->__rsi;
   mc->rbp = xnuss->__rbp;
@@ -400,11 +416,17 @@ noasan static void xnuthreadstate2linux(
   mc->gs = xnuss->__gs;
   mc->fs = xnuss->__fs;
   mc->eflags = xnuss->__rflags;
-  uc->uc_flags = xnuss->__rflags;
-  memcpy(&mc->r8, &xnuss->__r8, 8 * sizeof(int64_t));
+  mc->r8 = xnuss->__r8;
+  mc->r9 = xnuss->__r9;
+  mc->r10 = xnuss->__r10;
+  mc->r11 = xnuss->__r11;
+  mc->r12 = xnuss->__r12;
+  mc->r13 = xnuss->__r13;
+  mc->r14 = xnuss->__r14;
+  mc->r15 = xnuss->__r15;
 }
 
-noasan static void linuxthreadstate2xnu(
+static privileged void linuxthreadstate2xnu(
     struct __darwin_x86_thread_state64 *xnuss, ucontext_t *uc, mcontext_t *mc) {
   xnuss->__rdi = mc->rdi;
   xnuss->__rsi = mc->rsi;
@@ -419,11 +441,24 @@ noasan static void linuxthreadstate2xnu(
   xnuss->__gs = mc->gs;
   xnuss->__fs = mc->fs;
   xnuss->__rflags = mc->eflags;
-  xnuss->__rflags = uc->uc_flags;
-  memcpy(&xnuss->__r8, &mc->r8, 8 * sizeof(int64_t));
+  xnuss->__r8 = mc->r8;
+  xnuss->__r9 = mc->r9;
+  xnuss->__r10 = mc->r10;
+  xnuss->__r11 = mc->r11;
+  xnuss->__r12 = mc->r12;
+  xnuss->__r13 = mc->r13;
+  xnuss->__r14 = mc->r14;
+  xnuss->__r15 = mc->r15;
 }
 
-noasan static void xnussefpustate2linux(
+static privileged void CopyFpXmmRegs(void *d, const void *s) {
+  size_t i;
+  for (i = 0; i < (8 + 16) * 16; i += 16) {
+    __memcpy((char *)d + i, (const char *)s + i, 16);
+  }
+}
+
+static privileged void xnussefpustate2linux(
     struct FpuState *fs, struct __darwin_x86_float_state64 *xnufs) {
   fs->cwd = xnufs->__fpu_fcw;
   fs->swd = xnufs->__fpu_fsw;
@@ -433,11 +468,10 @@ noasan static void xnussefpustate2linux(
   fs->rdp = xnufs->__fpu_dp;
   fs->mxcsr = xnufs->__fpu_mxcsr;
   fs->mxcr_mask = xnufs->__fpu_mxcsrmask;
-  /* copy st0-st7 as well as xmm0-xmm15 */
-  memcpy(fs->st, &xnufs->__fpu_stmm0, (8 + 16) * sizeof(uint128_t));
+  CopyFpXmmRegs(fs->st, &xnufs->__fpu_stmm0);
 }
 
-noasan static void linuxssefpustate2xnu(
+static privileged void linuxssefpustate2xnu(
     struct __darwin_x86_float_state64 *xnufs, struct FpuState *fs) {
   xnufs->__fpu_fcw = fs->cwd;
   xnufs->__fpu_fsw = fs->swd;
@@ -447,84 +481,109 @@ noasan static void linuxssefpustate2xnu(
   xnufs->__fpu_dp = fs->rdp;
   xnufs->__fpu_mxcsr = fs->mxcsr;
   xnufs->__fpu_mxcsrmask = fs->mxcr_mask;
-  /* copy st0-st7 as well as xmm0-xmm15 */
-  memcpy(&xnufs->__fpu_stmm0, fs->st, (8 + 16) * sizeof(uint128_t));
+  CopyFpXmmRegs(&xnufs->__fpu_stmm0, fs->st);
 }
 
-noasan void __sigenter_xnu(void *fn, int infostyle, int sig,
-                           struct __darwin_siginfo *xnuinfo,
-                           struct __darwin_ucontext *xnuctx) {
-  int rva;
-  intptr_t ax;
+#endif /* __x86_64__ */
+
+#ifdef __x86_64__
+privileged void __sigenter_xnu(void *fn, int infostyle, int sig,
+                               struct siginfo_xnu *xnuinfo,
+                               struct __darwin_ucontext *xnuctx) {
+#else
+privileged void __sigenter_xnu(int sig, struct siginfo_xnu *xnuinfo,
+                               struct __darwin_ucontext *xnuctx) {
+#endif
+#pragma GCC push_options
+#pragma GCC diagnostic ignored "-Wframe-larger-than="
   struct Goodies {
     ucontext_t uc;
     siginfo_t si;
   } g;
-  rva = __sighandrvas[sig & (NSIG - 1)];
+  CheckLargeStackAllocation(&g, sizeof(g));
+#pragma GCC pop_options
+  int rva, flags;
+  rva = __sighandrvas[sig];
   if (rva >= kSigactionMinRva) {
-    memset(&g, 0, sizeof(g));
-    if (xnuctx) {
-      memcpy(&g.uc.uc_sigmask, &xnuctx->uc_sigmask,
-             MIN(sizeof(g.uc.uc_sigmask), sizeof(xnuctx->uc_sigmask)));
-      g.uc.uc_stack.ss_sp = xnuctx->uc_stack.ss_sp;
-      g.uc.uc_stack.ss_flags = xnuctx->uc_stack.ss_flags;
-      g.uc.uc_stack.ss_size = xnuctx->uc_stack.ss_size;
-      g.uc.uc_mcontext.fpregs = &g.uc.__fpustate;
-      if (xnuctx->uc_mcontext) {
-        if (xnuctx->uc_mcsize >=
-            sizeof(struct __darwin_x86_exception_state64)) {
-          xnuexceptionstate2linux(&g.uc.uc_mcontext,
-                                  &xnuctx->uc_mcontext->__es);
+    flags = __sighandflags[sig];
+    if (~flags & SA_SIGINFO) {
+      ((sigaction_f)(__executable_start + rva))(sig, 0, 0);
+    } else {
+      __repstosb(&g, 0, sizeof(g));
+
+      if (xnuctx) {
+        g.uc.uc_sigmask = xnuctx->uc_sigmask;
+        g.uc.uc_stack.ss_sp = xnuctx->uc_stack.ss_sp;
+        g.uc.uc_stack.ss_flags = xnuctx->uc_stack.ss_flags;
+        g.uc.uc_stack.ss_size = xnuctx->uc_stack.ss_size;
+#ifdef __x86_64__
+        g.uc.uc_mcontext.fpregs = &g.uc.__fpustate;
+        if (xnuctx->uc_mcontext) {
+          if (xnuctx->uc_mcsize >=
+              sizeof(struct __darwin_x86_exception_state64)) {
+            xnuexceptionstate2linux(&g.uc.uc_mcontext,
+                                    &xnuctx->uc_mcontext->__es);
+          }
+          if (xnuctx->uc_mcsize >=
+              (sizeof(struct __darwin_x86_exception_state64) +
+               sizeof(struct __darwin_x86_thread_state64))) {
+            xnuthreadstate2linux(&g.uc.uc_mcontext, &xnuctx->uc_mcontext->__ss);
+          }
+          if (xnuctx->uc_mcsize >= sizeof(struct __darwin_mcontext64)) {
+            xnussefpustate2linux(&g.uc.__fpustate, &xnuctx->uc_mcontext->__fs);
+          }
         }
-        if (xnuctx->uc_mcsize >=
-            (sizeof(struct __darwin_x86_exception_state64) +
-             sizeof(struct __darwin_x86_thread_state64))) {
-          xnuthreadstate2linux(&g.uc, &g.uc.uc_mcontext,
-                               &xnuctx->uc_mcontext->__ss);
+#elif defined(__aarch64__)
+        if (xnuctx->uc_mcontext) {
+          __memcpy(g.uc.uc_mcontext.regs, &xnuctx->uc_mcontext->__ss.__x,
+                   33 * 8);
         }
-        if (xnuctx->uc_mcsize >= sizeof(struct __darwin_mcontext64)) {
-          xnussefpustate2linux(&g.uc.__fpustate, &xnuctx->uc_mcontext->__fs);
-        }
+#endif /* __x86_64__ */
       }
-    }
-    if (xnuinfo) {
-      g.si.si_signo = xnuinfo->si_signo;
-      g.si.si_errno = xnuinfo->si_errno;
-      g.si.si_code = xnuinfo->si_code;
-      if (xnuinfo->si_pid) {
-        g.si.si_pid = xnuinfo->si_pid;
-        g.si.si_uid = xnuinfo->si_uid;
-        g.si.si_status = xnuinfo->si_status;
-      } else {
-        g.si.si_addr = (void *)xnuinfo->si_addr;
+
+      if (xnuinfo) {
+        __siginfo2cosmo(&g.si, (void *)xnuinfo);
       }
-    }
-    ((sigaction_f)(_base + rva))(sig, &g.si, &g.uc);
-    if (xnuctx) {
-      xnuctx->uc_stack.ss_sp = g.uc.uc_stack.ss_sp;
-      xnuctx->uc_stack.ss_flags = g.uc.uc_stack.ss_flags;
-      xnuctx->uc_stack.ss_size = g.uc.uc_stack.ss_size;
-      if (xnuctx->uc_mcontext) {
-        if (xnuctx->uc_mcsize >=
-            sizeof(struct __darwin_x86_exception_state64)) {
-          linuxexceptionstate2xnu(&xnuctx->uc_mcontext->__es,
-                                  &g.uc.uc_mcontext);
+      ((sigaction_f)(__executable_start + rva))(sig, &g.si, &g.uc);
+
+      if (xnuctx) {
+        xnuctx->uc_stack.ss_sp = g.uc.uc_stack.ss_sp;
+        xnuctx->uc_stack.ss_flags = g.uc.uc_stack.ss_flags;
+        xnuctx->uc_stack.ss_size = g.uc.uc_stack.ss_size;
+        xnuctx->uc_sigmask = g.uc.uc_sigmask;
+#ifdef __x86_64__
+        if (xnuctx->uc_mcontext) {
+          if (xnuctx->uc_mcsize >=
+              sizeof(struct __darwin_x86_exception_state64)) {
+            linuxexceptionstate2xnu(&xnuctx->uc_mcontext->__es,
+                                    &g.uc.uc_mcontext);
+          }
+          if (xnuctx->uc_mcsize >=
+              (sizeof(struct __darwin_x86_exception_state64) +
+               sizeof(struct __darwin_x86_thread_state64))) {
+            linuxthreadstate2xnu(&xnuctx->uc_mcontext->__ss, &g.uc,
+                                 &g.uc.uc_mcontext);
+          }
+          if (xnuctx->uc_mcsize >= sizeof(struct __darwin_mcontext64)) {
+            linuxssefpustate2xnu(&xnuctx->uc_mcontext->__fs, &g.uc.__fpustate);
+          }
         }
-        if (xnuctx->uc_mcsize >=
-            (sizeof(struct __darwin_x86_exception_state64) +
-             sizeof(struct __darwin_x86_thread_state64))) {
-          linuxthreadstate2xnu(&xnuctx->uc_mcontext->__ss, &g.uc,
-                               &g.uc.uc_mcontext);
+#elif defined(__aarch64__)
+        if (xnuctx->uc_mcontext) {
+          __memcpy(&xnuctx->uc_mcontext->__ss.__x, g.uc.uc_mcontext.regs,
+                   33 * 8);
         }
-        if (xnuctx->uc_mcsize >= sizeof(struct __darwin_mcontext64)) {
-          linuxssefpustate2xnu(&xnuctx->uc_mcontext->__fs, &g.uc.__fpustate);
-        }
+#endif /* __x86_64__ */
       }
     }
   }
+
+#ifdef __x86_64__
+  intptr_t ax;
   asm volatile("syscall"
                : "=a"(ax)
                : "0"(0x20000b8 /* sigreturn */), "D"(xnuctx), "S"(infostyle)
                : "rcx", "r11", "memory", "cc");
-  unreachable;
+  notpossible;
+#endif /* __x86_64__ */
 }

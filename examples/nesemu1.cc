@@ -10,42 +10,49 @@
 #include "dsp/tty/itoa8.h"
 #include "dsp/tty/quant.h"
 #include "dsp/tty/tty.h"
-#include "libc/alg/arraylist2.internal.h"
 #include "libc/assert.h"
-#include "libc/bits/bits.h"
-#include "libc/bits/safemacros.internal.h"
 #include "libc/calls/calls.h"
 #include "libc/calls/struct/itimerval.h"
+#include "libc/calls/struct/sigset.h"
 #include "libc/calls/struct/winsize.h"
+#include "libc/calls/termios.h"
+#include "libc/dce.h"
 #include "libc/errno.h"
 #include "libc/fmt/conv.h"
-#include "libc/fmt/fmt.h"
+#include "libc/intrin/safemacros.internal.h"
 #include "libc/inttypes.h"
 #include "libc/log/check.h"
 #include "libc/log/log.h"
 #include "libc/macros.internal.h"
 #include "libc/math.h"
+#include "libc/mem/arraylist2.internal.h"
 #include "libc/mem/mem.h"
-#include "libc/ohmyplus/vector.h"
 #include "libc/runtime/runtime.h"
+#include "libc/runtime/zipos.internal.h"
 #include "libc/sock/sock.h"
+#include "libc/sock/struct/pollfd.h"
 #include "libc/stdio/stdio.h"
 #include "libc/str/str.h"
 #include "libc/sysv/consts/ex.h"
 #include "libc/sysv/consts/exit.h"
+#include "libc/sysv/consts/f.h"
 #include "libc/sysv/consts/fileno.h"
 #include "libc/sysv/consts/itimer.h"
 #include "libc/sysv/consts/o.h"
 #include "libc/sysv/consts/poll.h"
+#include "libc/sysv/consts/prio.h"
 #include "libc/sysv/consts/sig.h"
+#include "libc/sysv/consts/w.h"
+#include "libc/thread/thread.h"
 #include "libc/time/time.h"
-#include "libc/x/x.h"
-#include "libc/zip.h"
-#include "libc/zipos/zipos.internal.h"
-#include "third_party/getopt/getopt.h"
+#include "libc/x/xasprintf.h"
+#include "libc/x/xsigaction.h"
+#include "libc/zip.internal.h"
+#include "third_party/getopt/getopt.internal.h"
+#include "third_party/libcxx/vector"
 #include "tool/viz/lib/knobs.h"
 
-STATIC_YOINK("zip_uri_support");
+__static_yoink("zipos");
 
 #define USAGE \
   " [ROM] [FMV]\n\
@@ -144,12 +151,8 @@ struct ZipGames {
 };
 
 static int frame_;
-static int drain_;
 static int playfd_;
 static int playpid_;
-static bool exited_;
-static bool timeout_;
-static bool resized_;
 static size_t vtsize_;
 static bool artifacts_;
 static long tyn_, txn_;
@@ -157,11 +160,13 @@ static struct Frame vf_[2];
 static struct Audio audio_;
 static const char* inputfn_;
 static struct Status status_;
+static volatile bool exited_;
+static volatile bool timeout_;
+static volatile bool resized_;
 static struct TtyRgb* ttyrgb_;
 static unsigned char *R, *G, *B;
 static struct ZipGames zipgames_;
 static struct Action arrow_, button_;
-static struct SamplingSolution* asx_;
 static struct SamplingSolution* ssy_;
 static struct SamplingSolution* ssx_;
 static unsigned char pixels_[3][DYN][DXN];
@@ -232,12 +237,22 @@ void InitPalette(void) {
   }
 }
 
-static void WriteStringNow(const char* s) {
-  ttywrite(STDOUT_FILENO, s, strlen(s));
+static ssize_t Write(int fd, const void* p, size_t n) {
+  int rc;
+  sigset_t ss, oldss;
+  sigfillset(&ss);
+  sigprocmask(SIG_SETMASK, &ss, &oldss);
+  rc = write(fd, p, n);
+  sigprocmask(SIG_SETMASK, &oldss, 0);
+  return rc;
+}
+
+static void WriteString(const char* s) {
+  Write(STDOUT_FILENO, s, strlen(s));
 }
 
 void Exit(int rc) {
-  WriteStringNow("\r\n\e[0m\e[J");
+  WriteString("\r\n\e[0m\e[J");
   if (rc && errno) {
     fprintf(stderr, "%s%s\r\n", "error: ", strerror(errno));
   }
@@ -247,11 +262,19 @@ void Exit(int rc) {
 void Cleanup(void) {
   ttyraw((enum TtyRawFlags)(-1u));
   ttyshowcursor(STDOUT_FILENO);
-  if (playpid_) kill(playpid_, SIGTERM), sched_yield();
+  if (playpid_) {
+    kill(playpid_, SIGKILL);
+    close(playfd_);
+    playfd_ = -1;
+  }
+}
+
+void OnCtrlC(void) {
+  exited_ = true;
 }
 
 void OnTimer(void) {
-  timeout_ = true;  // also sends EINTR to poll()
+  timeout_ = true;
 }
 
 void OnResize(void) {
@@ -262,12 +285,11 @@ void OnPiped(void) {
   exited_ = true;
 }
 
-void OnCtrlC(void) {
-  drain_ = exited_ = true;
-}
-
 void OnSigChld(void) {
-  exited_ = true, playpid_ = 0;
+  waitpid(-1, 0, WNOHANG);
+  close(playfd_);
+  playpid_ = 0;
+  playfd_ = -1;
 }
 
 void InitFrame(struct Frame* f) {
@@ -285,13 +307,13 @@ void GetTermSize(void) {
   struct winsize wsize_;
   wsize_.ws_row = 25;
   wsize_.ws_col = 80;
-  getttysize(STDIN_FILENO, &wsize_);
+  tcgetwinsize(0, &wsize_);
   FreeSamplingSolution(ssy_);
   FreeSamplingSolution(ssx_);
   tyn_ = wsize_.ws_row * 2;
   txn_ = wsize_.ws_col * 2;
   ssy_ = ComputeSamplingSolution(tyn_, ChopAxis(tyn_, DYN), 0, 0, 2);
-  ssx_ = ComputeSamplingSolution(txn_, ChopAxis(txn_, DXN), 0, 0, 0);
+  ssx_ = ComputeSamplingSolution(txn_, ChopAxis(txn_, DXN), 0, 0, 2);
   R = (unsigned char*)realloc(R, tyn_ * txn_);
   G = (unsigned char*)realloc(G, tyn_ * txn_);
   B = (unsigned char*)realloc(B, tyn_ * txn_);
@@ -301,7 +323,8 @@ void GetTermSize(void) {
   frame_ = 0;
   InitFrame(&vf_[0]);
   InitFrame(&vf_[1]);
-  WriteStringNow("\e[0m\e[H\e[J");
+  WriteString("\e[0m\e[H\e[J");
+  resized_ = false;
 }
 
 void IoInit(void) {
@@ -326,13 +349,14 @@ void SetStatus(const char* fmt, ...) {
   status_.wait = FPS / 2;
 }
 
-void ReadKeyboard(void) {
+ssize_t ReadKeyboard(void) {
   int ch;
-  char b[20];
   ssize_t i, rc;
-  memset(b, -1, sizeof(b));
+  char b[20] = {0};
   if ((rc = read(STDIN_FILENO, b, 16)) != -1) {
-    if (!rc) exited_ = true;
+    if (!rc) {
+      Exit(0);
+    }
     for (i = 0; i < rc; ++i) {
       ch = b[i];
       if (b[i] == '\e') {
@@ -444,6 +468,7 @@ void ReadKeyboard(void) {
       }
     }
   }
+  return rc;
 }
 
 bool HasVideo(struct Frame* f) {
@@ -468,26 +493,29 @@ void TransmitVideo(void) {
   struct Frame* f;
   f = &vf_[frame_];
   if (!HasVideo(f)) f = FlipFrameBuffer();
-  if ((rc = write(STDOUT_FILENO, f->w, f->p - f->w)) != -1) {
+  if ((rc = Write(STDOUT_FILENO, f->w, f->p - f->w)) != -1) {
     f->w += rc;
+  } else if (errno == EAGAIN) {
+    // slow teletypewriter
   } else if (errno == EPIPE) {
     Exit(0);
-  } else if (errno != EINTR) {
-    Exit(1);
   }
 }
 
 void TransmitAudio(void) {
   ssize_t rc;
+  if (!playpid_) return;
   if (!audio_.i) return;
-  if ((rc = write(playfd_, audio_.p, audio_.i * sizeof(short))) != -1) {
+  if (playfd_ == -1) return;
+  if ((rc = Write(playfd_, audio_.p, audio_.i * sizeof(short))) != -1) {
     rc /= sizeof(short);
     memmove(audio_.p, audio_.p + rc, (audio_.i - rc) * sizeof(short));
     audio_.i -= rc;
   } else if (errno == EPIPE) {
+    kill(playpid_, SIGKILL);
+    close(playfd_);
+    playfd_ = -1;
     Exit(0);
-  } else if (errno != EINTR) {
-    Exit(1);
   }
 }
 
@@ -531,36 +559,15 @@ void KeyCountdown(struct Action* a) {
 }
 
 void PollAndSynchronize(void) {
-  struct pollfd fds[3];
   do {
-    errno = 0;
-    fds[0].fd = STDIN_FILENO;
-    fds[0].events = POLLIN;
-    fds[1].fd = HasPendingVideo() ? STDOUT_FILENO : -1;
-    fds[1].events = POLLOUT;
-    fds[2].fd = HasPendingAudio() ? playfd_ : -1;
-    fds[2].events = POLLOUT;
-    if (poll(fds, ARRAYLEN(fds), 1. / FPS * 1e3) != -1) {
-      if (fds[0].revents & (POLLIN | POLLERR)) ReadKeyboard();
-      if (fds[1].revents & (POLLOUT | POLLERR)) TransmitVideo();
-      if (fds[2].revents & (POLLOUT | POLLERR)) TransmitAudio();
-    } else if (errno != EINTR) {
-      Exit(1);
-    }
-    if (exited_) {
-      if (drain_) {
-        while (HasPendingVideo()) {
-          TransmitVideo();
-        }
-      }
-      Exit(0);
-    }
-    if (resized_) {
-      resized_ = false;
-      GetTermSize();
-      break;
+    if (ReadKeyboard() == -1) {
+      if (errno != EINTR) Exit(1);
+      if (exited_) Exit(0);
+      if (resized_) GetTermSize();
     }
   } while (!timeout_);
+  TransmitVideo();
+  TransmitAudio();
   timeout_ = false;
   KeyCountdown(&arrow_);
   KeyCountdown(&button_);
@@ -582,7 +589,6 @@ void Raster(void) {
     f->p = stpcpy(f->p, "\e[0m\e[H");
     f->p = stpcpy(f->p, status_.text);
   }
-  CHECK_LT(f->p - f->mem, vtsize_);
   PollAndSynchronize();
 }
 
@@ -596,7 +602,6 @@ void FlushScanline(unsigned py) {
 }
 
 static void PutPixel(unsigned px, unsigned py, unsigned pixel, int offset) {
-  unsigned rgb;
   static unsigned prev;
   pixels_[0][py][px] = palette_[offset][prev % 64][pixel][2];
   pixels_[1][py][px] = palette_[offset][prev % 64][pixel][1];
@@ -1700,34 +1705,41 @@ int PlayGame(const char* romfile, const char* opt_tasfile) {
 
   // open speaker
   // todo: this needs plenty of work
-  if ((ffplay = commandvenv("FFPLAY", "ffplay"))) {
-    devnull = open("/dev/null", O_WRONLY | O_CLOEXEC);
-    pipe2(pipefds, O_CLOEXEC);
-    if (!(playpid_ = vfork())) {
-      const char* const args[] = {
-          "ffplay",   "-nodisp", "-loglevel", "quiet", "-fflags",
-          "nobuffer", "-ac",     "1",         "-ar",   "1789773",
-          "-f",       "s16le",   "pipe:",     NULL,
-      };
-      dup2(pipefds[0], 0);
-      dup2(devnull, 1);
-      dup2(devnull, 2);
-      execv(ffplay, (char* const*)args);
-      abort();
-    }
-    close(pipefds[0]);
-    playfd_ = pipefds[1];
-  } else {
-    fputs("\nWARNING\n\
+  if (!IsWindows()) {
+    if ((ffplay = commandvenv("FFPLAY", "ffplay"))) {
+      devnull = open("/dev/null", O_WRONLY | O_CLOEXEC);
+      pipe2(pipefds, O_CLOEXEC);
+      if (!(playpid_ = fork())) {
+        const char* const args[] = {
+            ffplay,                  //
+            "-nodisp",               //
+            "-loglevel", "quiet",    //
+            "-ac",       "1",        //
+            "-ar",       "1789773",  //
+            "-f",        "s16le",    //
+            "pipe:",                 //
+            NULL,
+        };
+        dup2(pipefds[0], 0);
+        dup2(devnull, 1);
+        dup2(devnull, 2);
+        execv(ffplay, (char* const*)args);
+        abort();
+      }
+      close(pipefds[0]);
+      playfd_ = pipefds[1];
+    } else {
+      fputs("\nWARNING\n\
 \n\
   Need `ffplay` command to play audio\n\
   Try `sudo apt install ffmpeg` on Linux\n\
   You can specify it on `PATH` or in `FFPLAY`\n\
 \n\
 Press enter to continue without sound: ",
-          stdout);
-    fflush(stdout);
-    GetLine();
+            stdout);
+      fflush(stdout);
+      GetLine();
+    }
   }
 
   // Read the ROM file header
@@ -1808,8 +1820,8 @@ void GetOpts(int argc, char* argv[]) {
 
 size_t FindZipGames(void) {
   char* name;
+  size_t i, cf;
   struct Zipos* zipos;
-  size_t i, cf, namesize;
   if ((zipos = __zipos_get())) {
     for (i = 0, cf = ZIP_CDIR_OFFSET(zipos->cdir);
          i < ZIP_CDIR_RECORDS(zipos->cdir);
@@ -1818,7 +1830,7 @@ size_t FindZipGames(void) {
           !memcmp((ZIP_CFILE_NAME(zipos->map + cf) +
                    ZIP_CFILE_NAMESIZE(zipos->map + cf) - 4),
                   ".nes", 4) &&
-          (name = xasprintf("zip:%.*s", ZIP_CFILE_NAMESIZE(zipos->map + cf),
+          (name = xasprintf("/zip/%.*s", ZIP_CFILE_NAMESIZE(zipos->map + cf),
                             ZIP_CFILE_NAME(zipos->map + cf)))) {
         APPEND(&zipgames_.p, &zipgames_.i, &zipgames_.n, &name);
       }
@@ -1831,14 +1843,14 @@ int SelectGameFromZip(void) {
   int i, rc;
   char *line, *uri;
   fputs("\nCOSMOPOLITAN NESEMU1\n\n", stdout);
-  for (i = 0; i < zipgames_.i; ++i) {
+  for (i = 0; i < (int)zipgames_.i; ++i) {
     printf("  [%d] %s\n", i, zipgames_.p[i]);
   }
   fputs("\nPlease choose a game (or CTRL-C to quit) [default 0]: ", stdout);
   fflush(stdout);
   rc = 0;
   if ((line = GetLine())) {
-    i = MAX(0, MIN(zipgames_.i - 1, atoi(line)));
+    i = MAX(0, MIN((int)zipgames_.i - 1, atoi(line)));
     uri = zipgames_.p[i];
     rc = PlayGame(uri, NULL);
     free(uri);

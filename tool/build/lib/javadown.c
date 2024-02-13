@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,10 +16,9 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/limits.h"
+#include "tool/build/lib/javadown.h"
 #include "libc/mem/mem.h"
 #include "libc/str/str.h"
-#include "tool/build/lib/javadown.h"
 
 #define FILEOVERVIEW "@fileoverview"
 
@@ -44,12 +43,12 @@ static void DeleteLastEmptyLine(char *p, size_t n) {
 
 static void AppendLine(struct Lines *lines) {
   lines->p = realloc(lines->p, ++lines->n * sizeof(*lines->p));
-  memset(lines->p + lines->n - 1, 0, sizeof(*lines->p));
+  bzero(lines->p + lines->n - 1, sizeof(*lines->p));
 }
 
 static void AppendTag(struct JavadownTags *tags) {
   tags->p = realloc(tags->p, ++tags->n * sizeof(*tags->p));
-  memset(tags->p + tags->n - 1, 0, sizeof(*tags->p));
+  bzero(tags->p + tags->n - 1, sizeof(*tags->p));
 }
 
 static unsigned GetSpacePrefixLen(const char *p, size_t n) {
@@ -121,7 +120,6 @@ static void SplitLines(struct Lines *lines, char *p) {
 }
 
 static bool ConsumeFileOverview(struct Lines *lines) {
-  int i;
   if (lines->n && lines->p[0].n >= strlen(FILEOVERVIEW) &&
       startswith(lines->p[0].p, FILEOVERVIEW)) {
     lines->p[0].p += strlen(FILEOVERVIEW);
@@ -193,10 +191,9 @@ static int ExtractText(struct Javadown *jd, struct Lines *lines, int i) {
 }
 
 static void ExtractTags(struct Javadown *jd, struct Lines *lines, int i) {
-  size_t n;
-  char *p, *tag, *text, *p2;
+  char *tag, *text, *p2;
   unsigned taglen, textlen, n2;
-  for (p = NULL, n = 0; i < lines->n; ++i) {
+  for (; i < lines->n; ++i) {
     if (!lines->p[i].n) continue;
     if (lines->p[i].p[0] != '@') continue;
     tag = lines->p[i].p + 1;
@@ -247,7 +244,7 @@ struct Javadown *ParseJavadown(const char *data, size_t size) {
   char *p;
   struct Lines lines;
   struct Javadown *jd;
-  memset(&lines, 0, sizeof(lines));
+  bzero(&lines, sizeof(lines));
   jd = calloc(1, sizeof(struct Javadown));
   p = strndup(data, size);
   SplitLines(&lines, p);

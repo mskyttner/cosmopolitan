@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -17,7 +17,8 @@
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
 #include "libc/calls/calls.h"
-#include "libc/calls/internal.h"
+#include "libc/calls/syscall-sysv.internal.h"
+#include "libc/intrin/strace.internal.h"
 #include "libc/sysv/consts/at.h"
 
 /**
@@ -28,8 +29,11 @@
  * @return 0 on success, or -1 w/ errno
  * @see /etc/passwd for user ids
  * @see /etc/group for group ids
+ * @raises ENOSYS on Windows
  */
 int fchown(int fd, uint32_t uid, uint32_t gid) {
-  /* TODO(jart): Windows? */
-  return sys_fchown(fd, uid, gid);
+  int rc;
+  rc = sys_fchown(fd, uid, gid);
+  STRACE("fchown(%d, %d, %d) → %d% m", fd, uid, gid, rc);
+  return rc;
 }

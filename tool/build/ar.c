@@ -1,7 +1,7 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
-│ Copyright 2020 Justine Alexandra Roberts Tunney                              │
+│ Copyright 2023 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
 │ Permission to use, copy, modify, and/or distribute this software for         │
 │ any purpose with or without fee is hereby granted, provided that the         │
@@ -16,267 +16,462 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/alg/arraylist2.internal.h"
-#include "libc/bits/bits.h"
-#include "libc/bits/safemacros.internal.h"
+#include "libc/ar.h"
+#include "libc/assert.h"
 #include "libc/calls/calls.h"
 #include "libc/calls/struct/iovec.h"
 #include "libc/calls/struct/stat.h"
+#include "libc/elf/def.h"
 #include "libc/elf/elf.h"
+#include "libc/elf/scalar.h"
+#include "libc/elf/struct/sym.h"
 #include "libc/errno.h"
-#include "libc/fmt/conv.h"
 #include "libc/fmt/itoa.h"
-#include "libc/log/check.h"
+#include "libc/fmt/libgen.h"
+#include "libc/fmt/magnumstrs.internal.h"
+#include "libc/serialize.h"
+#include "libc/intrin/bsr.h"
+#include "libc/limits.h"
 #include "libc/macros.internal.h"
 #include "libc/runtime/runtime.h"
-#include "libc/sock/sock.h"
-#include "libc/stdio/stdio.h"
+#include "libc/stdckdint.h"
 #include "libc/str/str.h"
-#include "libc/sysv/consts/madv.h"
 #include "libc/sysv/consts/map.h"
 #include "libc/sysv/consts/o.h"
 #include "libc/sysv/consts/prot.h"
-#include "libc/x/x.h"
+#include "libc/sysv/consts/s.h"
+#include "tool/build/lib/getargs.h"
 
 /**
- * @fileoverview System Five Static Archive Builder.
+ * @fileoverview cosmopolitan ar
  *
- * GNU ar has a bug which causes it to take hundreds of milliseconds to
- * build archives like ntdll.a and several minutes for cosmopolitan.a.
- * This goes quadratically faster taking 1ms to do ntdll w/ hot cache.
+ * This static archiver is superior:
  *
- * Compared to LLVM ar this tool goes 10x faster because it uses madvise
- * and copy_file_range which give us the optimal page cached file system
- * beahvior that a build environment needs.
+ * - Isn't "accidentally quadratic" like GNU ar
+ * - Goes 2x faster than LLVM ar while using 100x less memory
+ * - Can be built as a 52kb APE binary that works well on six OSes
  *
- * This tool also adds a feature: it ignores directory parameters. This
- * is important because good Makefiles on Linux will generally have the
- * directory be a .a prerequisite so archives rebuild on file deletion.
+ * This static archiver introduces handy features:
+ *
+ * - Arguments may be supplied in an `@args.txt` file
+ * - Directory arguments are ignored
+ *
+ * @see https://www.unix.com/man-page/opensolaris/3head/ar.h/
+ * @see https://en.wikipedia.org/wiki/Ar_(Unix)
  */
 
-struct Args {
-  size_t n;
-  char **p;
-};
+#define VERSION                     \
+  "cosmopolitan ar v2.0\n"          \
+  "copyright 2023 justine tunney\n" \
+  "https://github.com/jart/cosmopolitan\n"
 
-struct String {
-  size_t i, n;
-  char *p;
-};
+#define HEAP_SIZE (256L * 1024 * 1024)
 
 struct Ints {
-  size_t i, n;
   int *p;
+  size_t i;
 };
 
-struct Header {
-  char name[16];
-  char date[12];
-  char uid[6];
-  char gid[6];
-  char mode[8];
-  char size[10];
-  char fmag[2];
+struct Args {
+  char **p;
+  size_t i;
 };
 
-static void MakeHeader(struct Header *h, const char *name, int ref, int mode,
-                       int size) {
+struct Bytes {
+  char *p;
+  size_t i;
+};
+
+static void SortChars(char *A, long n) {
+  long i, j, t;
+  for (i = 1; i < n; i++) {
+    t = A[i];
+    j = i - 1;
+    while (j >= 0 && A[j] > t) {
+      A[j + 1] = A[j];
+      j = j - 1;
+    }
+    A[j + 1] = t;
+  }
+}
+
+static wontreturn void Die(const char *path, const char *reason) {
+  tinyprint(2, path, ": ", reason, "\n", NULL);
+  exit(1);
+}
+
+static wontreturn void SysDie(const char *path, const char *func) {
+  const char *errstr;
+  if (!(errstr = _strerdoc(errno))) errstr = "Unknown error";
+  tinyprint(2, path, ": ", func, ": ", errstr, "\n", NULL);
+  exit(1);
+}
+
+static wontreturn void ShowUsage(int rc, int fd) {
+  tinyprint(fd, VERSION,
+            "\n"
+            "USAGE\n"
+            "\n",
+            "  ", program_invocation_name, " FLAGS ARCHIVE FILE...\n",
+            "\n"
+            "FLAGS\n"
+            "\n"
+            "  rcs        create new archive with index\n"
+            "  rcsD       always deterministic\n"
+            "  --help     show usage\n"
+            "  --version  show program details\n"
+            "\n"
+            "ARGUMENTS\n"
+            "\n"
+            "  ARCHIVE    should be foo.a\n"
+            "  FILE       should be foo.o or @args.txt\n"
+            "\n",
+            NULL);
+  exit(rc);
+}
+
+// allocates 𝑛 bytes of memory aligned on 𝑎 from .bss
+// - avoids binary bloat of mmap() and malloc()
+// - dies if out of memory or overflow occurs
+// - new memory is always zero-initialized
+// - can't be resized; use reballoc api
+// - can't be freed or reclaimed
+static void *balloc(size_t n, size_t a) {
+  size_t c;
+  int resizable;
+  uintptr_t h, p;
+  static size_t used;
+  static char heap[HEAP_SIZE];
+  assert(a >= 1 && !(a & (a - 1)));
+  h = (uintptr_t)heap;
+  p = h + used;
+  if ((resizable = (ssize_t)n < 0)) {
+    n = ~n;
+    p += sizeof(c);
+  }
+  p += a - 1;
+  p &= -a;
+  if (n <= a) {
+    c = a;
+  } else if (!resizable) {
+    c = n;
+  } else {
+    c = 2ull << (__builtin_clzll(n - 1) ^ (sizeof(long long) * CHAR_BIT - 1));
+  }
+  if (c < a || c > HEAP_SIZE || p + c > h + HEAP_SIZE) {
+    Die(program_invocation_name, "out of memory");
+  }
+  used = p - h + c;
+  if (resizable) {
+    memcpy((char *)p - sizeof(c), &c, sizeof(c));
+  }
+  return (void *)p;
+}
+
+// reallocates 𝑛 𝑧-sized elements aligned on 𝑧 from .bss
+// - avoids binary bloat of mmap() and realloc()
+// - dies if out of memory or overflow occurs
+// - new memory is always zero-initialized
+// - abstracts multiply overflow check
+// - shrinking always happens in-place
+// - growing cost is always amortized
+// - can't be freed or reclaimed
+static void *reballoc(void *p, size_t n, size_t z) {
+  size_t c;
+  assert(n >= 0);
+  assert(z >= 1 && !(z & (z - 1)));
+  if (ckd_mul(&n, n, z)) n = HEAP_SIZE;
+  if (!p) return balloc(~n, z);
+  memcpy(&c, (char *)p - sizeof(c), sizeof(c));
+  assert(c >= z && c < HEAP_SIZE && !(c & (c - 1)));
+  if (n <= c) return p;
+  return memcpy(balloc(~n, z), p, c);
+}
+
+static char *StrDup(const char *s) {
+  size_t n = strlen(s) + 1;
+  return memcpy(balloc(n, 1), s, n);
+}
+
+static char *StrCat(const char *a, const char *b) {
+  char *p;
+  size_t n, m;
+  n = strlen(a);
+  m = strlen(b);
+  p = balloc(n + m + 1, 1);
+  memcpy(p, a, n);
+  memcpy(p + n, b, m + 1);
+  return p;
+}
+
+static void AppendInt(struct Ints *l, int i) {
+  l->p = reballoc(l->p, l->i + 2, sizeof(*l->p));
+  l->p[l->i++] = i;
+}
+
+static void AppendArg(struct Args *l, char *s) {
+  l->p = reballoc(l->p, l->i + 2, sizeof(*l->p));
+  l->p[l->i++] = s;
+}
+
+static void AppendBytes(struct Bytes *l, const char *s, size_t n) {
+  l->p = reballoc(l->p, l->i + n + 1, sizeof(*l->p));
+  memcpy(l->p + l->i, s, n);
+  l->i += n;
+}
+
+static int IsEqual(const char *a, const char *b) {
+  return !strcmp(a, b);
+}
+
+static void MakeArHeader(struct ar_hdr *h,  //
+                         const char *name,  //
+                         int mode,          //
+                         size_t size) {     //
   size_t n;
-  char buf[24];
+  char b[21];
   memset(h, ' ', sizeof(*h));
   n = strlen(name);
-  memcpy(h->name, name, n);
-  if (ref != -1) {
-    memcpy(h->name + n, buf, uint64toarray_radix10(ref, buf));
+  if (n > ARRAYLEN(h->ar_name)) {
+    Die(program_invocation_name, "ar_name overflow");
   }
-  if (strcmp(name, "//") != 0) {
-    h->date[0] = '0';
-    h->uid[0] = '0';
-    h->gid[0] = '0';
-    memcpy(h->mode, buf, uint64toarray_radix8(mode & 0777, buf));
+  memcpy(h->ar_name, name, n);
+  if (!IsEqual(name, "//")) {
+    h->ar_date[0] = '0';
+    h->ar_uid[0] = '0';
+    h->ar_gid[0] = '0';
+    memcpy(h->ar_mode, b, FormatOctal32(b, mode & 0777, false) - b);
   }
-  h->fmag[0] = '`';
-  h->fmag[1] = '\n';
-  memcpy(h->size, buf, uint64toarray_radix10(size, buf));
+  if (size > 9999999999) {
+    Die(program_invocation_name, "ar_size overflow");
+  }
+  memcpy(h->ar_size, b, FormatUint64(b, size) - b);
+  memcpy(h->ar_fmag, ARFMAG, sizeof(h->ar_fmag));
+}
+
+// copies data between file descriptors until end of file
+// - assumes signal handlers aren't in play
+// - uses copy_file_range() if possible
+// - returns number of bytes exchanged
+// - dies if operation fails
+static int64_t CopyFileOrDie(const char *inpath, int infd,  //
+                             const char *outpath, int outfd) {
+  int64_t toto;
+  char buf[512];
+  size_t exchanged;
+  ssize_t got, wrote;
+  enum { CFR, RW } mode;
+  for (mode = CFR, toto = 0;; toto += exchanged) {
+    if (mode == CFR) {
+      got = copy_file_range(infd, 0, outfd, 0, 4194304, 0);
+      if (!got) break;
+      if (got != -1) {
+        exchanged = got;
+      } else if (errno == EXDEV ||       // different partitions
+                 errno == ENOSYS ||      // not linux or freebsd
+                 errno == ENOTSUP ||     // probably a /zip file
+                 errno == EOPNOTSUPP) {  // technically the same
+        exchanged = 0;
+        mode = RW;
+      } else {
+        SysDie(inpath, "copy_file_range");
+      }
+    } else {
+      got = read(infd, buf, sizeof(buf));
+      if (!got) break;
+      if (got == -1) SysDie(inpath, "read");
+      wrote = write(outfd, buf, got);
+      if (wrote == -1) SysDie(outpath, "write");
+      if (wrote != got) Die(outpath, "posix violated");
+      exchanged = wrote;
+    }
+  }
+  return toto;
 }
 
 int main(int argc, char *argv[]) {
-  FILE *f;
-  void *elf;
-  char *line;
-  char *strs;
-  ssize_t rc;
-  size_t wrote;
-  size_t remain;
-  struct stat *st;
-  uint32_t outpos;
-  Elf64_Sym *syms;
-  struct Args args;
-  uint64_t outsize;
-  uint8_t *tablebuf;
-  struct iovec iov[7];
-  const char *symname;
-  const char *outpath;
-  Elf64_Xword symcount;
-  struct Ints symnames;
-  struct String symbols;
-  struct String filenames;
-  struct Header *header1, *header2;
-  int *offsets, *modes, *sizes, *names;
-  int i, j, fd, err, name, outfd, tablebufsize;
+  int fd, objectid;
+  struct ar_hdr header1;
+  struct ar_hdr header2;
 
-  if (!(argc > 2 && strcmp(argv[1], "rcsD") == 0)) {
-    fprintf(stderr, "%s%s%s\n", "Usage: ", argv[0], " rcsD ARCHIVE FILE...");
-    return 1;
+#ifdef MODE_DBG
+  ShowCrashReports();
+#endif
+
+  // handle hardcoded flags
+  if (argc == 2) {
+    if (IsEqual(argv[1], "-n")) {
+      exit(0);
+    }
+    if (IsEqual(argv[1], "-h") ||  //
+        IsEqual(argv[1], "-?") ||  //
+        IsEqual(argv[1], "--help")) {
+      ShowUsage(0, 1);
+    }
+    if (IsEqual(argv[1], "--version")) {
+      tinyprint(1, VERSION, NULL);
+      exit(0);
+    }
   }
 
-  memset(&args, 0, sizeof(args));
-  for (i = 3; i < argc; ++i) {
-    if (argv[i][0] != '@') {
-      args.p = realloc(args.p, ++args.n * sizeof(*args.p));
-      args.p[args.n - 1] = strdup(argv[i]);
+  // get flags and output path
+  if (argc < 3) {
+    ShowUsage(1, 2);
+  }
+  char *flags = argv[1];
+  const char *outpath = argv[2];
+
+  // we only support one mode of operation, which is creating a new
+  // deterministic archive. computing the full archive goes so fast
+  // on modern systems that it isn't worth supporting the byzantine
+  // standard posix ar flags intended to improve cassette tape perf
+  SortChars(flags, strlen(flags));
+  if (*flags == 'D') ++flags;
+  if (!IsEqual(flags, "cr") &&    //
+      !IsEqual(flags, "cru") &&   //
+      !IsEqual(flags, "crsu") &&  //
+      !IsEqual(flags, "crs")) {
+    tinyprint(2, program_invocation_name, ": flags should be rcsD\n", NULL);
+    ShowUsage(1, 2);
+  }
+
+  struct Args args = {reballoc(0, 4096, sizeof(char *))};
+  struct Args names = {reballoc(0, 4096, sizeof(char *))};
+  struct Ints modes = {reballoc(0, 4096, sizeof(int))};
+  struct Ints sizes = {reballoc(0, 4096, sizeof(int))};
+  struct Ints symnames = {reballoc(0, 16384, sizeof(int))};
+  struct Bytes symbols = {reballoc(0, 131072, sizeof(char))};
+  struct Bytes filenames = {reballoc(0, 16384, sizeof(char))};
+
+  // perform analysis pass on input files
+  struct GetArgs ga;
+  getargs_init(&ga, argv + 3);
+  for (objectid = 0;;) {
+    struct stat st;
+    const char *arg;
+    if (!(arg = getargs_next(&ga))) break;
+    if (endswith(arg, "/")) continue;
+    if (endswith(arg, ".pkg")) continue;
+    if (stat(arg, &st)) SysDie(arg, "stat");
+    if (S_ISDIR(st.st_mode)) continue;
+    if (!st.st_size) Die(arg, "file is empty");
+    if (st.st_size > 0x7ffff000) Die(arg, "file too large");
+    if ((fd = open(arg, O_RDONLY)) == -1) SysDie(arg, "open");
+    AppendArg(&args, StrDup(arg));
+    AppendInt(&sizes, st.st_size);
+    AppendInt(&modes, st.st_mode);
+    char bnbuf[PATH_MAX + 1];
+    strlcpy(bnbuf, arg, sizeof(bnbuf));
+    char *aname = StrCat(basename(bnbuf), "/");
+    if (strlen(aname) <= sizeof(header1.ar_name)) {
+      AppendArg(&names, aname);
     } else {
-      CHECK_NOTNULL((f = fopen(argv[i] + 1, "r")));
-      while ((line = chomp(xgetline(f)))) {
-        if (!isempty(line)) {
-          args.p = realloc(args.p, ++args.n * sizeof(*args.p));
-          args.p[args.n - 1] = line;
-        } else {
-          free(line);
-        }
-      }
-      CHECK_NE(-1, fclose(f));
+      char ibuf[21];
+      FormatUint64(ibuf, filenames.i);
+      AppendArg(&names, StrCat("/", ibuf));
+      AppendBytes(&filenames, aname, strlen(aname));
+      AppendBytes(&filenames, "\n", 1);
     }
-  }
-
-  st = xmalloc(sizeof(struct stat));
-  symbols.i = 0;
-  symbols.n = 4096;
-  symbols.p = xmalloc(symbols.n);
-  filenames.i = 0;
-  filenames.n = 1024;
-  filenames.p = xmalloc(filenames.n);
-  symnames.i = 0;
-  symnames.n = 1024;
-  symnames.p = xmalloc(symnames.n * sizeof(int));
-
-  outpath = argv[2];
-  modes = xmalloc(sizeof(int) * args.n);
-  names = xmalloc(sizeof(int) * args.n);
-  sizes = xmalloc(sizeof(int) * args.n);
-
-  // load global symbols and populate page cache
-  for (i = 0; i < args.n; ++i) {
-  TryAgain:
-    CHECK_NE(-1, (fd = open(args.p[i], O_RDONLY)), "%s", args.p[i]);
-    CHECK_NE(-1, fstat(fd, st));
-    CHECK_LT(st->st_size, 0x7ffff000);
-    if (!st->st_size || S_ISDIR(st->st_mode) || endswith(args.p[i], ".pkg")) {
-      close(fd);
-      for (j = i; j + 1 < args.n; ++j) {
-        args.p[j] = args.p[j + 1];
-      }
-      --args.n;
-      goto TryAgain;
-    }
-    names[i] = filenames.i;
-    sizes[i] = st->st_size;
-    modes[i] = st->st_mode;
-    CONCAT(&filenames.p, &filenames.i, &filenames.n, basename(args.p[i]),
-           strlen(basename(args.p[i])));
-    CONCAT(&filenames.p, &filenames.i, &filenames.n, "/\n", 2);
-    CHECK_NE(MAP_FAILED,
-             (elf = mmap(NULL, st->st_size, PROT_READ, MAP_PRIVATE, fd, 0)));
-    CHECK(IsElf64Binary(elf, st->st_size));
-    CHECK_NOTNULL((strs = GetElfStringTable(elf, st->st_size)));
-    CHECK_NOTNULL((syms = GetElfSymbolTable(elf, st->st_size, &symcount)));
-    for (j = 0; j < symcount; ++j) {
+    size_t mapsize = st.st_size;
+    void *elf = mmap(0, mapsize, PROT_READ, MAP_PRIVATE, fd, 0);
+    if (elf == MAP_FAILED) SysDie(arg, "mmap");
+    if (!IsElf64Binary(elf, mapsize)) Die(arg, "not an elf64 binary");
+    char *strs = GetElfStringTable(elf, mapsize, ".strtab");
+    if (!strs) Die(arg, "elf .strtab not found");
+    Elf64_Xword symcount;
+    Elf64_Shdr *symsec = GetElfSymbolTable(elf, mapsize, SHT_SYMTAB, &symcount);
+    Elf64_Sym *syms = GetElfSectionAddress(elf, mapsize, symsec);
+    if (!syms) Die(arg, "elf symbol table not found");
+    for (Elf64_Xword j = symsec->sh_info; j < symcount; ++j) {
+      if (!syms[j].st_name) continue;
       if (syms[j].st_shndx == SHN_UNDEF) continue;
-      if (syms[j].st_other == STV_INTERNAL) continue;
-      if (ELF64_ST_BIND(syms[j].st_info) == STB_LOCAL) continue;
-      symname = GetElfString(elf, st->st_size, strs, syms[j].st_name);
-      CONCAT(&symbols.p, &symbols.i, &symbols.n, symname, strlen(symname) + 1);
-      APPEND(&symnames.p, &symnames.i, &symnames.n, &i);
+      if (syms[j].st_shndx == SHN_COMMON) continue;
+      const char *symname = GetElfString(elf, mapsize, strs, syms[j].st_name);
+      if (!symname) Die(arg, "elf symbol name corrupted");
+      AppendBytes(&symbols, symname, strlen(symname) + 1);
+      AppendInt(&symnames, objectid);
     }
-    CHECK_NE(-1, munmap(elf, st->st_size));
-    close(fd);
+    if (munmap(elf, mapsize)) SysDie(arg, "munmap");
+    if (close(fd)) SysDie(arg, "close");
+    ++objectid;
   }
-  APPEND(&filenames.p, &filenames.i, &filenames.n, "\n");
+  getargs_destroy(&ga);
 
   // compute length of output archive
-  outsize = 0;
-  tablebufsize = 4 + symnames.i * 4;
-  tablebuf = xmalloc(tablebufsize);
-  offsets = xmalloc(args.n * 4);
-  header1 = xmalloc(sizeof(struct Header));
-  header2 = xmalloc(sizeof(struct Header));
-  iov[0].iov_base = "!<arch>\n";
-  outsize += (iov[0].iov_len = 8);
-  iov[1].iov_base = header1;
-  outsize += (iov[1].iov_len = 60);
+  size_t outsize = 0;
+  struct iovec iov[8];
+  int tablebufsize = 4 + symnames.i * 4;
+  char *tablebuf = balloc(tablebufsize, 1);
+  int *offsets = balloc(args.i * sizeof(int), sizeof(int));
+  iov[0].iov_base = ARMAG;
+  outsize += (iov[0].iov_len = SARMAG);
+  iov[1].iov_base = &header1;
+  outsize += (iov[1].iov_len = sizeof(struct ar_hdr));
   iov[2].iov_base = tablebuf;
   outsize += (iov[2].iov_len = tablebufsize);
   iov[3].iov_base = symbols.p;
   outsize += (iov[3].iov_len = symbols.i);
-  iov[4].iov_base = "\n";
+  iov[4].iov_base = "";
   outsize += (iov[4].iov_len = outsize & 1);
-  iov[5].iov_base = header2;
-  outsize += (iov[5].iov_len = 60);
+  iov[5].iov_base = &header2;
+  outsize += (iov[5].iov_len = filenames.i ? sizeof(struct ar_hdr) : 0);
   iov[6].iov_base = filenames.p;
   outsize += (iov[6].iov_len = filenames.i);
-  for (i = 0; i < args.n; ++i) {
+  iov[7].iov_base = "\n";
+  outsize += (iov[7].iov_len = filenames.i & 1);
+  for (size_t i = 0; i < args.i; ++i) {
     outsize += outsize & 1;
+    if (outsize > INT_MAX) {
+      Die(outpath, "archive too large");
+    }
     offsets[i] = outsize;
-    outsize += 60;
-    outsize += sizes[i];
+    outsize += sizeof(struct ar_hdr);
+    outsize += sizes.p[i];
   }
-  CHECK_LE(outsize, 0x7ffff000);
 
   // serialize metadata
-  MakeHeader(header1, "/", -1, 0, tablebufsize + symbols.i);
-  MakeHeader(header2, "//", -1, 0, filenames.i);
+  MakeArHeader(&header1, "/", 0, tablebufsize + ROUNDUP(symbols.i, 2));
+  MakeArHeader(&header2, "//", 0, ROUNDUP(filenames.i, 2));
   WRITE32BE(tablebuf, symnames.i);
-  for (i = 0; i < symnames.i; ++i) {
+  for (size_t i = 0; i < symnames.i; ++i) {
     WRITE32BE(tablebuf + 4 + i * 4, offsets[symnames.p[i]]);
   }
 
   // write output archive
-  CHECK_NE(-1, (outfd = open(outpath, O_WRONLY | O_TRUNC | O_CREAT, 0644)));
-  ftruncate(outfd, outsize);
-  if ((outsize = writev(outfd, iov, ARRAYLEN(iov))) == -1) goto fail;
-  for (i = 0; i < args.n; ++i) {
-    if ((fd = open(args.p[i], O_RDONLY)) == -1) goto fail;
+  int outfd;
+  if ((outfd = creat(outpath, 0644)) == -1) {
+    SysDie(outpath, "creat");
+  }
+  if (ftruncate(outfd, outsize)) {
+    SysDie(outpath, "ftruncate");
+  }
+  if ((outsize = writev(outfd, iov, ARRAYLEN(iov))) == -1) {
+    SysDie(outpath, "writev[1]");
+  }
+  for (size_t i = 0; i < args.i; ++i) {
+    const char *inpath = args.p[i];
+    if ((fd = open(inpath, O_RDONLY)) == -1) {
+      SysDie(inpath, "open");
+    }
     iov[0].iov_base = "\n";
     outsize += (iov[0].iov_len = outsize & 1);
-    iov[1].iov_base = header1;
-    outsize += (iov[1].iov_len = 60);
-    MakeHeader(header1, "/", names[i], modes[i], sizes[i]);
-    if (writev(outfd, iov, 2) == -1) goto fail;
-    outsize += (remain = sizes[i]);
-    if (copy_file_range(fd, NULL, outfd, NULL, remain, 0) != remain) goto fail;
-    close(fd);
+    iov[1].iov_base = &header1;
+    outsize += (iov[1].iov_len = sizeof(struct ar_hdr));
+    MakeArHeader(&header1, names.p[i], modes.p[i], sizes.p[i]);
+    if (writev(outfd, iov, 2) == -1) {
+      SysDie(outpath, "writev[2]");
+    }
+    outsize += sizes.p[i];
+    if (CopyFileOrDie(inpath, fd, outpath, outfd) != sizes.p[i]) {
+      Die(inpath, "file size changed");
+    }
+    if (close(fd)) {
+      SysDie(inpath, "close");
+    }
   }
-  close(outfd);
+  if (close(outfd)) {
+    SysDie(outpath, "close");
+  }
 
-  for (i = 0; i < args.n; ++i) free(args.p[i]);
-  free(args.p);
-  free(header2);
-  free(header1);
-  free(offsets);
-  free(tablebuf);
-  free(sizes);
-  free(names);
-  free(modes);
-  free(symbols.p);
-  free(filenames.p);
-  free(symnames.p);
-  free(st);
   return 0;
-
-fail:
-  err = errno;
-  if (!err) err = 1;
-  unlink(outpath);
-  fputs("error: ar failed\n", stderr);
-  return err;
 }

@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:t;c-basic-offset:4;tab-width:4;coding:utf-8   -*-│
-│vi: set et ft=c ts=4 sw=4 fenc=utf-8                                       :vi│
+│ vi: set et ft=c ts=4 sw=4 fenc=utf-8                                     :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │  PL_MPEG - MPEG1 Video decoder, MP2 Audio decoder, MPEG-PS demuxer           │
 │  Dominic Szablewski - https://phoboslab.org                                  │
@@ -41,7 +41,7 @@ asm(".include \"libc/disclaimer.inc\"");
  * @note discovered by Nasir Ahmed
  */
 void plm_video_idct(int block[8][8]) {
-  int i, j, t1, t2, m0;
+  int i, t1, t2, m0;
   int b1, b3, b4, b6, b7;
   int y3, y4, y5, y6, y7;
   int x0, x1, x2, x3, x4;

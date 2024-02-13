@@ -1,18 +1,9 @@
-/*
-** $Id: lauxlib.h $
-** Auxiliary functions for building Lua libraries
-** See Copyright Notice in lua.h
-*/
-
-
 #ifndef lauxlib_h
 #define lauxlib_h
-
+#include "libc/assert.h"
 #include "libc/stdio/stdio.h"
 #include "third_party/lua/lua.h"
-
-/* clang-format off */
-
+#include "third_party/lua/luaconf.h"
 
 /* global table */
 #define LUA_GNAME	"_G"
@@ -112,6 +103,9 @@ LUALIB_API int (luaL_getsubtable) (lua_State *L, int idx, const char *fname);
 LUALIB_API void (luaL_traceback) (lua_State *L, lua_State *L1,
                                   const char *msg, int level);
 
+LUALIB_API void (luaL_traceback2) (lua_State *L, lua_State *L1,
+                                   const char *msg, int level);
+
 LUALIB_API void (luaL_requiref) (lua_State *L, const char *modname,
                                  lua_CFunction openf, int glb);
 
@@ -129,10 +123,10 @@ LUALIB_API void (luaL_requiref) (lua_State *L, const char *modname,
   (luaL_checkversion(L), luaL_newlibtable(L,l), luaL_setfuncs(L,l,0))
 
 #define luaL_argcheck(L, cond,arg,extramsg)	\
-		((void)((cond) || luaL_argerror(L, (arg), (extramsg))))
+	((void)(luai_likely(cond) || luaL_argerror(L, (arg), (extramsg))))
 
 #define luaL_argexpected(L,cond,arg,tname)	\
-		((void)((cond) || luaL_typeerror(L, (arg), (tname))))
+	((void)(luai_likely(cond) || luaL_typeerror(L, (arg), (tname))))
 
 #define luaL_checkstring(L,n)	(luaL_checklstring(L, (n), NULL))
 #define luaL_optstring(L,n,d)	(luaL_optlstring(L, (n), (d), NULL))
@@ -162,10 +156,9 @@ LUALIB_API void (luaL_requiref) (lua_State *L, const char *modname,
 #if !defined(lua_assert)
 
 #if defined LUAI_ASSERT
-  #include <assert.h>
   #define lua_assert(c)		assert(c)
 #else
-  #define lua_assert(c)		((void)0)
+  #define lua_assert(c)		unassert(c)
 #endif
 
 #endif

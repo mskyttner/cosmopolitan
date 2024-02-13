@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:t;c-basic-offset:4;tab-width:4;coding:utf-8   -*-│
-│vi: set et ft=c ts=4 sw=4 fenc=utf-8                                       :vi│
+│ vi: set et ft=c ts=4 sw=4 fenc=utf-8                                     :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │  PL_MPEG - MPEG1 Video decoder, MP2 Audio decoder, MPEG-PS demuxer           │
 │  Dominic Szablewski - https://phoboslab.org                                  │
@@ -32,7 +32,7 @@
 #include "dsp/mpeg/idct.h"
 #include "dsp/mpeg/mpeg.h"
 #include "dsp/mpeg/video.h"
-#include "libc/bits/initializer.internal.h"
+#include "libc/calls/struct/timespec.h"
 #include "libc/fmt/conv.h"
 #include "libc/log/log.h"
 #include "libc/macros.internal.h"
@@ -72,7 +72,8 @@ static const float PLM_VIDEO_PIXEL_ASPECT_RATIO[] = {
     0.6735, /* 3:4? */
     0.7031, /* MPEG-1 / MPEG-2 video encoding divergence? */
     0.7615, 0.8055, 0.8437, 0.8935, 0.9157, 0.9815,
-    1.0255, 1.0695, 1.0950, 1.1575, 1.2051};
+    1.0255, 1.0695, 1.0950, 1.1575, 1.2051,
+};
 
 static const float PLM_VIDEO_PICTURE_RATE[] = {
     23.976, /* NTSC-Film */
@@ -591,24 +592,24 @@ void plm_video_decode_sequence_header(plm_video_t *self) {
 
   self->has_sequence_header = true;
 
-  LOGF("%s:\n"
-       "\t%-20s = %15d;\n"
-       "\t%-20s = %15d;\n"
-       "\t%-20s = %15f;\n"
-       "\t%-20s = %15f;\n"
-       "\t%-20s = %15d;\n"
-       "\t%-20s = %15d;\n"
-       "\t%-20s = %15d;\n"
-       "\t%-20s = %15d;\n"
-       "\t%-20s = %15d;\n"
-       "\t%-20s = %15d;\n"
-       "\t%-20s = %15d;",
-       "New MPEG Sequence", "width", self->width, "height", self->height,
-       "framerate", self->framerate, "pixel_aspect_ratio",
-       self->pixel_aspect_ratio, "mb_size", self->mb_size, "mb_width",
-       self->mb_width, "mb_height", self->mb_height, "luma_width",
-       self->luma_width, "luma_height", self->luma_height, "chroma_width",
-       self->chroma_width, "chroma_height", self->chroma_height);
+  INFOF("%s:\n"
+        "\t%-20s = %15d;\n"
+        "\t%-20s = %15d;\n"
+        "\t%-20s = %15f;\n"
+        "\t%-20s = %15f;\n"
+        "\t%-20s = %15d;\n"
+        "\t%-20s = %15d;\n"
+        "\t%-20s = %15d;\n"
+        "\t%-20s = %15d;\n"
+        "\t%-20s = %15d;\n"
+        "\t%-20s = %15d;\n"
+        "\t%-20s = %15d;",
+        "New MPEG Sequence", "width", self->width, "height", self->height,
+        "framerate", self->framerate, "pixel_aspect_ratio",
+        self->pixel_aspect_ratio, "mb_size", self->mb_size, "mb_width",
+        self->mb_width, "mb_height", self->mb_height, "luma_width",
+        self->luma_width, "luma_height", self->luma_height, "chroma_width",
+        self->chroma_width, "chroma_height", self->chroma_height);
 }
 
 static void plm_video_copy_macroblock(plm_video_t *self, int motion_h,
@@ -1080,12 +1081,12 @@ static plm_frame_t *plm_video_decode_impl(plm_video_t *self) {
 }
 
 plm_frame_t *plm_video_decode(plm_video_t *self) {
-  long double tsc;
   plm_frame_t *res;
-  LOGF("plm_video_decode");
-  tsc = nowl();
+  struct timespec tsc;
+  INFOF("plm_video_decode");
+  tsc = timespec_real();
   res = plm_video_decode_impl(self);
-  plmpegdecode_latency_ = lroundl((nowl() - tsc) * 1e6l);
+  plmpegdecode_latency_ = timespec_tomicros(timespec_sub(timespec_real(), tsc));
   return res;
 }
 
@@ -1105,12 +1106,12 @@ plm_video_t *plm_video_create_with_buffer(plm_buffer_t *buffer,
 
 static textstartup void plm_video_init(void) {
   PLM_VIDEO_MACROBLOCK_TYPE[0] = NULL;
-  PLM_VIDEO_MACROBLOCK_TYPE[1] = PLM_VIDEO_MACROBLOCK_TYPE_INTRA;
-  PLM_VIDEO_MACROBLOCK_TYPE[2] = PLM_VIDEO_MACROBLOCK_TYPE_PREDICTIVE,
-  PLM_VIDEO_MACROBLOCK_TYPE[3] = PLM_VIDEO_MACROBLOCK_TYPE_B;
-  PLM_VIDEO_DCT_SIZE[0] = PLM_VIDEO_DCT_SIZE_LUMINANCE;
-  PLM_VIDEO_DCT_SIZE[1] = PLM_VIDEO_DCT_SIZE_CHROMINANCE;
-  PLM_VIDEO_DCT_SIZE[2] = PLM_VIDEO_DCT_SIZE_CHROMINANCE;
+  PLM_VIDEO_MACROBLOCK_TYPE[1] = (void *)PLM_VIDEO_MACROBLOCK_TYPE_INTRA;
+  PLM_VIDEO_MACROBLOCK_TYPE[2] = (void *)PLM_VIDEO_MACROBLOCK_TYPE_PREDICTIVE;
+  PLM_VIDEO_MACROBLOCK_TYPE[3] = (void *)PLM_VIDEO_MACROBLOCK_TYPE_B;
+  PLM_VIDEO_DCT_SIZE[0] = (void *)PLM_VIDEO_DCT_SIZE_LUMINANCE;
+  PLM_VIDEO_DCT_SIZE[1] = (void *)PLM_VIDEO_DCT_SIZE_CHROMINANCE;
+  PLM_VIDEO_DCT_SIZE[2] = (void *)PLM_VIDEO_DCT_SIZE_CHROMINANCE;
 }
 
 const void *const plm_video_init_ctor[] initarray = {plm_video_init};

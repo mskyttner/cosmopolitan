@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:t;c-basic-offset:4;tab-width:4;coding:utf-8   -*-│
-│vi: set et ft=c ts=4 sw=4 fenc=utf-8                                       :vi│
+│ vi: set et ft=c ts=4 sw=4 fenc=utf-8                                     :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │  PL_MPEG - MPEG1 Video decoder, MP2 Audio decoder, MPEG-PS demuxer           │
 │  Dominic Szablewski - https://phoboslab.org                                  │
@@ -40,7 +40,7 @@ asm(".include \"libc/disclaimer.inc\"");
  * @see YCbCr2RGB() in tool/viz/lib/ycbcr2rgb.c
  */
 void plm_frame_to_rgb(plm_frame_t *frame, uint8_t *rgb) {
-  // Chroma values are the same for each block of 4 pixels, so we proccess
+  // Chroma values are the same for each block of 4 pixels, so we process
   // 2 lines at a time, 2 neighboring pixels each.
   int w = frame->y.width, w2 = w >> 1;
   int y_index1 = 0, y_index2 = w, y_next_2_lines = w + (w - frame->width);

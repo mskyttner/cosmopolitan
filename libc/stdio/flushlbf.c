@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2021 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -18,6 +18,8 @@
 ╚─────────────────────────────────────────────────────────────────────────────*/
 #include "libc/calls/calls.h"
 #include "libc/stdio/fflush.internal.h"
+#include "libc/stdio/internal.h"
+#include "libc/stdio/stdio.h"
 #include "libc/stdio/stdio_ext.h"
 
 /**
@@ -25,9 +27,16 @@
  */
 void _flushlbf(void) {
   int i;
+  FILE *f;
+  __fflush_lock();
   for (i = 0; i < __fflush.handles.i; ++i) {
-    if (__fflush.handles.p[i]->bufmode == _IOLBF) {
-      fflush(__fflush.handles.p[i]);
+    if ((f = __fflush.handles.p[i])) {
+      flockfile(f);
+      if (f->bufmode == _IOLBF) {
+        fflush_unlocked(f);
+      }
+      funlockfile(f);
     }
   }
+  __fflush_unlock();
 }

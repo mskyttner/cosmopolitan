@@ -7,6 +7,7 @@
 #define lundump_c
 #define LUA_CORE
 
+#include "libc/str/str.h"
 #include "third_party/lua/ldebug.h"
 #include "third_party/lua/ldo.h"
 #include "third_party/lua/lfunc.h"
@@ -18,7 +19,6 @@
 #include "third_party/lua/lundump.h"
 #include "third_party/lua/lzio.h"
 
-/* clang-format off */
 
 #if !defined(luai_verifycode)
 #define luai_verifycode(L,f)  /* empty */

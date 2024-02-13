@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,18 +16,25 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/calls/internal.h"
+#include "libc/calls/struct/fd.internal.h"
+#include "libc/calls/struct/iovec.h"
+#include "libc/calls/struct/iovec.internal.h"
 #include "libc/nexgen32e/uart.internal.h"
 #include "libc/runtime/pc.internal.h"
+#ifdef __x86_64__
 
 ssize_t sys_writev_serial(struct Fd *fd, const struct iovec *iov, int iovlen) {
   size_t i, j, wrote = 0;
   for (i = 0; i < iovlen; ++i) {
     for (j = 0; j < iov[i].iov_len; ++j) {
-      while (!(inb(fd->handle + UART_LSR) & UART_TTYTXR)) asm("pause");
+      while (!(inb(fd->handle + UART_LSR) & UART_TTYTXR)) {
+        __builtin_ia32_pause();
+      }
       outb(fd->handle, ((char *)iov[i].iov_base)[j]);
       ++wrote;
     }
   }
   return wrote;
 }
+
+#endif

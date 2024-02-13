@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:t;c-basic-offset:4;tab-width:4;coding:utf-8   -*-│
-│vi: set et ft=c ts=4 sw=4 fenc=utf-8                                       :vi│
+│ vi: set noet ft=c ts=4 sw=4 fenc=utf-8                                   :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │  PL_MPEG - MPEG1 Video decoder, MP2 Audio decoder, MPEG-PS demuxer           │
 │  Dominic Szablewski - https://phoboslab.org                                  │
@@ -115,8 +115,8 @@ plm_packet_t *plm_demux_decode(plm_demux_t *self) {
 	do {
 		code = plm_buffer_next_start_code(self->buffer);
 		if (
-			code == PLM_DEMUX_PACKET_VIDEO_1 || 
-			code == PLM_DEMUX_PACKET_PRIVATE || 
+			code == PLM_DEMUX_PACKET_VIDEO_1 ||
+			code == PLM_DEMUX_PACKET_PRIVATE ||
 			(code >= PLM_DEMUX_PACKET_AUDIO_1 && code <= PLM_DEMUX_PACKET_AUDIO_4)
 		) {
 			return plm_demux_decode_packet(self, code);

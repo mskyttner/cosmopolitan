@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,23 +16,30 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/bits/safemacros.internal.h"
 #include "libc/calls/calls.h"
+#include "libc/calls/struct/stat.h"
 #include "libc/mem/mem.h"
 #include "libc/runtime/runtime.h"
-#include "libc/sysv/errfuns.h"
 
 /**
  * Returns current working directory.
  *
- * If the PWD environment variable is set, that'll be returned (since
- * it's faster than issuing a system call).
+ * If the `PWD` environment variable is set, and it's correct, then
+ * that'll be returned in its exact canonical or non-canonical form
+ * instead of calling getcwd().
  *
  * @return pointer that must be free()'d, or NULL w/ errno
  */
-nodiscard char *get_current_dir_name(void) {
-  char *buf, *res;
-  if (!(buf = malloc(PATH_MAX))) return NULL;
-  if (!(res = (getcwd)(buf, PATH_MAX))) free(buf);
-  return res;
+char *get_current_dir_name(void) {
+  const char *res;
+  struct stat st1, st2;
+  if ((res = getenv("PWD")) && *res &&  //
+      !stat(res, &st1) &&               //
+      !stat(".", &st2) &&               //
+      st1.st_dev == st2.st_dev &&       //
+      st1.st_ino == st2.st_ino) {
+    return strdup(res);
+  } else {
+    return getcwd(0, 0);
+  }
 }

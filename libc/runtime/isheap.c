@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -17,25 +17,21 @@
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
 #include "libc/macros.internal.h"
-#include "libc/runtime/memtrack.h"
+#include "libc/runtime/memtrack.internal.h"
 #include "libc/runtime/runtime.h"
+
+// TODO(jart): DELETE
 
 /**
  * Returns true if address isn't stack and was malloc'd or mmap'd.
  *
  * @assume stack addresses are always greater than heap addresses
  * @assume stack memory isn't stored beneath %rsp (-mno-red-zone)
+ * @deprecated
  */
-bool _isheap(void *p) {
-  int x, i;
-  uintptr_t rsp;
-  asm("mov\t%%rsp,%0" : "=r"(rsp));
-  if (ROUNDDOWN(rsp, STACKSIZE) == ROUNDDOWN((intptr_t)p, STACKSIZE)) {
-    return false;
-  } else {
-    if ((intptr_t)p <= (intptr_t)_end) return false;
-    x = (intptr_t)p >> 16;
-    i = FindMemoryInterval(&_mmi, x);
-    return i < _mmi.i && x >= _mmi.p[i].x && x <= _mmi.p[i].y;
-  }
+optimizesize bool32 _isheap(void *p) {
+  intptr_t x, y;
+  x = kAutomapStart;
+  y = x + kAutomapSize;
+  return x <= (intptr_t)p && (intptr_t)p < y;
 }

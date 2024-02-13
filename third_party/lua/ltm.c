@@ -1,12 +1,32 @@
-/*
-** $Id: ltm.c $
-** Tag methods
-** See Copyright Notice in lua.h
-*/
-
+/*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
+╚──────────────────────────────────────────────────────────────────────────────╝
+│                                                                              │
+│  Lua                                                                         │
+│  Copyright © 2004-2021 Lua.org, PUC-Rio.                                     │
+│                                                                              │
+│  Permission is hereby granted, free of charge, to any person obtaining       │
+│  a copy of this software and associated documentation files (the             │
+│  "Software"), to deal in the Software without restriction, including         │
+│  without limitation the rights to use, copy, modify, merge, publish,         │
+│  distribute, sublicense, and/or sell copies of the Software, and to          │
+│  permit persons to whom the Software is furnished to do so, subject to       │
+│  the following conditions:                                                   │
+│                                                                              │
+│  The above copyright notice and this permission notice shall be              │
+│  included in all copies or substantial portions of the Software.             │
+│                                                                              │
+│  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,             │
+│  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF          │
+│  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.      │
+│  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY        │
+│  CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,        │
+│  TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE           │
+│  SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                      │
+│                                                                              │
+╚─────────────────────────────────────────────────────────────────────────────*/
 #define ltm_c
 #define LUA_CORE
-
 #include "third_party/lua/ldebug.h"
 #include "third_party/lua/ldo.h"
 #include "third_party/lua/lgc.h"
@@ -19,7 +39,11 @@
 #include "third_party/lua/lua.h"
 #include "third_party/lua/lvm.h"
 
-/* clang-format off */
+asm(".ident\t\"\\n\\n\
+Lua 5.4.3 (MIT License)\\n\
+Copyright 1994–2021 Lua.org, PUC-Rio.\"");
+asm(".include \"libc/disclaimer.inc\"");
+
 
 static const char udatatypename[] = "userdata";
 
@@ -143,7 +167,7 @@ static int callbinTM (lua_State *L, const TValue *p1, const TValue *p2,
 
 void luaT_trybinTM (lua_State *L, const TValue *p1, const TValue *p2,
                     StkId res, TMS event) {
-  if (!callbinTM(L, p1, p2, res, event)) {
+  if (l_unlikely(!callbinTM(L, p1, p2, res, event))) {
     switch (event) {
       case TM_BAND: case TM_BOR: case TM_BXOR:
       case TM_SHL: case TM_SHR: case TM_BNOT: {
@@ -162,7 +186,8 @@ void luaT_trybinTM (lua_State *L, const TValue *p1, const TValue *p2,
 
 void luaT_tryconcatTM (lua_State *L) {
   StkId top = L->top;
-  if (!callbinTM(L, s2v(top - 2), s2v(top - 1), top - 2, TM_CONCAT))
+  if (l_unlikely(!callbinTM(L, s2v(top - 2), s2v(top - 1), top - 2,
+                               TM_CONCAT)))
     luaG_concaterror(L, s2v(top - 2), s2v(top - 1));
 }
 

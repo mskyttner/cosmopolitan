@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -17,35 +17,20 @@
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
 #include "libc/stdio/stdio.h"
-#include "libc/str/thompike.h"
-#include "libc/str/tpdecodecb.internal.h"
 
 /**
  * Reads UTF-8 character from stream.
+ *
+ * @param f is non-null file object stream pointer
  * @return wide character or -1 on EOF or error
+ * @see fgetwc_unlocked()
  */
 wint_t fgetwc(FILE *f) {
-  int c, n;
-  wint_t b, x, y;
-  if (f->beg < f->end) {
-    b = f->buf[f->beg++] & 0xff;
-  } else if ((c = fgetc(f)) != -1) {
-    b = c;
-  } else {
-    return -1;
-  }
-  if (b < 0300) return b;
-  n = ThomPikeLen(b);
-  x = ThomPikeByte(b);
-  while (--n) {
-    if ((c = fgetc(f)) == -1) return -1;
-    y = c;
-    if (ThomPikeCont(y)) {
-      x = ThomPikeMerge(x, y);
-    } else {
-      ungetc(y, f);
-      return b;
-    }
-  }
-  return x;
+  wint_t wc;
+  flockfile(f);
+  wc = fgetwc_unlocked(f);
+  funlockfile(f);
+  return wc;
 }
+
+__strong_reference(fgetwc, getwc);

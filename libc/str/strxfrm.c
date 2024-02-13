@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ This is free and unencumbered software released into the public domain.      │
 │                                                                              │
@@ -29,7 +29,7 @@
 #include "libc/str/str.h"
 
 /**
- * transforms strings into the current C locale.
+ * Transforms strings into current C locale.
  * calling strcmp() on two strxfrm()-ed strings
  * is same as calling strcoll() on the originals.
  *
@@ -42,6 +42,8 @@
  * @note if dest is NULL, count has to be zero
  */
 size_t strxfrm(char *dest, const char *src, size_t count) {
-  assert(dest == NULL ? count == 0 : 1);
+  unassert(dest == NULL ? count == 0 : 1);
   return strlcpy(dest, src, count);
 }
+
+__weak_reference(strxfrm, strxfrm_l);

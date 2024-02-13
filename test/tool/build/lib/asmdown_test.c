@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=8 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,9 +16,9 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
+#include "tool/build/lib/asmdown.h"
 #include "libc/str/str.h"
 #include "libc/testlib/testlib.h"
-#include "tool/build/lib/asmdown.h"
 
 TEST(ParseAsmdown, test) {
   struct Asmdown *ad;
@@ -30,8 +30,9 @@ TEST(ParseAsmdown, test) {
 /\n\
 /	@param	xmm0 has double in lower half\n\
 /	@return	xmm0 has result in lower half\n\
-fabs:	.leafprologue\n\
-	.profilable\n\
+	.ftrace1\n\
+fabs:	.ftrace2\n\
+	.leafprologue\n\
 	mov	$0x7fffffffffffffff,%rax\n\
 	movq	%xmm0,%rdx\n\
 	and	%rax,%rdx\n\
@@ -67,7 +68,7 @@ tinymath_acos:\n\
   EXPECT_STREQ("xmm0 has result in lower half",
                ad->symbols.p[0].javadown->tags.p[1].text);
 
-  EXPECT_EQ(17, ad->symbols.p[1].line);
+  EXPECT_EQ(18, ad->symbols.p[1].line);
   EXPECT_STREQ("tinymath_acos", ad->symbols.p[1].name);
   EXPECT_FALSE(ad->symbols.p[1].javadown->isfileoverview);
   EXPECT_STREQ("Returns arc cosine of 𝑥.", ad->symbols.p[1].javadown->title);

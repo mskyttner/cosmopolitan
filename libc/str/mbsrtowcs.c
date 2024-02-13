@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╚──────────────────────────────────────────────────────────────────────────────╝
 │                                                                              │
 │  Musl Libc                                                                   │
@@ -66,15 +66,6 @@ size_t mbsrtowcs(wchar_t *ws, const char **src, size_t wn, mbstate_t *st) {
   }
   if (!ws)
     for (;;) {
-#ifdef __GNUC__
-      typedef uint32_t __attribute__((__may_alias__)) w32;
-      if (*s - 1u < 0x7f && (uintptr_t)s % 4 == 0) {
-        while (!((*(w32 *)s | *(w32 *)s - 0x01010101) & 0x80808080)) {
-          s += 4;
-          wn -= 4;
-        }
-      }
-#endif
       if (*s - 1u < 0x7f) {
         s++;
         wn--;
@@ -111,19 +102,6 @@ size_t mbsrtowcs(wchar_t *ws, const char **src, size_t wn, mbstate_t *st) {
         *src = (const void *)s;
         return wn0;
       }
-#ifdef __GNUC__
-      typedef uint32_t __attribute__((__may_alias__)) w32;
-      if (*s - 1u < 0x7f && (uintptr_t)s % 4 == 0) {
-        while (wn >= 5 &&
-               !((*(w32 *)s | *(w32 *)s - 0x01010101) & 0x80808080)) {
-          *ws++ = *s++;
-          *ws++ = *s++;
-          *ws++ = *s++;
-          *ws++ = *s++;
-          wn -= 4;
-        }
-      }
-#endif
       if (*s - 1u < 0x7f) {
         *ws++ = *s++;
         wn--;
@@ -136,19 +114,19 @@ size_t mbsrtowcs(wchar_t *ws, const char **src, size_t wn, mbstate_t *st) {
         s--;
         break;
       }
-      c = (c << 6) | *s++ - 0x80;
+      c = (c << 6) | (*s++ - 0x80);
       if (c & (1U << 31)) {
         if (*s - 0x80u >= 0x40) {
           s -= 2;
           break;
         }
-        c = (c << 6) | *s++ - 0x80;
+        c = (c << 6) | (*s++ - 0x80);
         if (c & (1U << 31)) {
           if (*s - 0x80u >= 0x40) {
             s -= 3;
             break;
           }
-          c = (c << 6) | *s++ - 0x80;
+          c = (c << 6) | (*s++ - 0x80);
         }
       }
       *ws++ = c;

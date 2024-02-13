@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -19,22 +19,18 @@
 #include "libc/stdio/stdio.h"
 
 /**
- * Formats and writes string to stdout.
+ * Formats and writes text to stdout.
  *
  * Cosmopolitan supports most of the standard formatting behaviors
- * described by `man 3 printf`, in addition to the following:
+ * described by `man 3 printf`, in addition to the following
  *
- * - `%jd`, `%jx`, etc. are {,u}intmax_t which in Cosmopolitan is 128-bit.
+ * - `%jjd`, `%jjx`, etc. are {,u}int128_t (cosmopolitan only)
  *
  * - `%'d` or `%,d` may be used to insert thousands separators. The prior is
  *   consistent with C; the latter is consistent with Python.
  *
  * - `%m` inserts strerror(errno) into the formatted output. This is
  *   consistent with glibc, musl, and uclibc.
- *
- * - `%n` inserts "\n" on non-Windows and "\r\n" on Windows. This is the
- *   same behavior as Java. It's incompatible with glibc's behavior,
- *   since that's problematic according to Android's security team.
  *
  * - `%hs` converts UTF-16/UCS-2 → UTF-8, which can be helpful on Windows.
  *   Formatting (e.g. %-10hs) will use monospace display width rather
@@ -61,11 +57,11 @@
  * @see __fmt() for intuitive reference documentation
  * @see {,v}{,s{,n},{,{,x}as},f,d}printf
  */
-int(printf)(const char* fmt, ...) {
+int printf(const char* fmt, ...) {
   int rc;
   va_list va;
   va_start(va, fmt);
-  rc = (vfprintf)(stdout, fmt, va);
+  rc = vfprintf(stdout, fmt, va);
   va_end(va);
   return rc;
 }

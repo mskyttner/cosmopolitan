@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2021 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -17,16 +17,31 @@
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
 #include "libc/calls/calls.h"
+#include "libc/log/check.h"
+#include "libc/mem/mem.h"
+#include "libc/mem/gc.h"
 #include "libc/stdio/stdio.h"
+#include "libc/temp.h"
+#include "libc/str/str.h"
 #include "libc/testlib/ezbench.h"
 #include "libc/testlib/hyperion.h"
 #include "libc/testlib/testlib.h"
+#include "libc/x/x.h"
 #include "net/http/escape.h"
+
+char *o;
+size_t y;
+
+void TearDownOnce(void) {
+  free(o);
+  o = 0;
+  y = 0;
+}
 
 char *escapejs(const char *s) {
   char *p;
   size_t n;
-  p = EscapeJsStringLiteral(s, strlen(s), &n);
+  p = EscapeJsStringLiteral(&o, &y, s, strlen(s), &n);
   ASSERT_EQ(strlen(p), n);
   return p;
 }
@@ -56,27 +71,27 @@ void makefile1(void) {
   FILE *f;
   char *p;
   size_t n;
-  p = EscapeJsStringLiteral(kHyperion, kHyperionSize, &n);
-  f = fopen("/tmp/a", "wb");
+  p = EscapeJsStringLiteral(&o, &y, kHyperion, kHyperionSize, &n);
+  f = tmpfile();
   fwrite(p, n, 1, f);
   fclose(f);
-  free(p);
 }
 
 void makefile2(void) {
   int fd;
   char *p;
   size_t n;
-  p = EscapeJsStringLiteral(kHyperion, kHyperionSize, &n);
-  fd = creat("/tmp/a", 0644);
+  p = EscapeJsStringLiteral(&o, &y, kHyperion, kHyperionSize, &n);
+  fd = tmpfd();
   write(fd, p, n);
   close(fd);
-  free(p);
 }
 
 BENCH(EscapeJsStringLiteral, bench) {
-  EZBENCH2("escapejs", donothing,
-           free(EscapeJsStringLiteral(kHyperion, kHyperionSize, 0)));
+  EZBENCH2("escapejs tiny", donothing,
+           EscapeJsStringLiteral(&o, &y, "hello", 5, 0));
+  EZBENCH2("escapejs book", donothing,
+           EscapeJsStringLiteral(&o, &y, kHyperion, kHyperionSize, 0));
   EZBENCH2("makefile1", donothing, makefile1());
   EZBENCH2("makefile2", donothing, makefile2());
 }

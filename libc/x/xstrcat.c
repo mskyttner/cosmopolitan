@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -36,21 +36,29 @@
  */
 char *(xstrcat)(const char *s, ...) {
   va_list va;
-  size_t n, m;
+  intptr_t q;
   char *p, b[2];
-  p = NULL;
+  size_t n, m, c;
   n = 0;
+  c = 32;
+  p = xmalloc(c);
   va_start(va, s);
   do {
-    if ((intptr_t)s > 0 && (intptr_t)s <= 255) {
-      b[0] = (unsigned char)(intptr_t)s;
+    q = (intptr_t)s;
+    if (q > 0 && q <= 255) {
+      b[0] = q;
       b[1] = '\0';
       s = b;
       m = 1;
     } else {
       m = strlen(s);
     }
-    p = xrealloc(p, n + m + 1);
+    if (n + m + 1 > c) {
+      do {
+        c += c >> 1;
+      } while (n + m + 1 > c);
+      p = xrealloc(p, c);
+    }
     memcpy(p + n, s, m + 1);
     n += m;
   } while ((s = va_arg(va, const char *)));

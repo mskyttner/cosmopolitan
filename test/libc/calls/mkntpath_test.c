@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -17,8 +17,11 @@
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
 #include "libc/calls/internal.h"
-#include "libc/runtime/gc.internal.h"
+#include "libc/calls/syscall_support-nt.internal.h"
+#include "libc/dce.h"
+#include "libc/mem/gc.h"
 #include "libc/testlib/testlib.h"
+#if SupportsWindows()
 
 char16_t p[PATH_MAX];
 
@@ -42,3 +45,10 @@ TEST(mkntpath, testUnicode) {
   EXPECT_EQ(20, __mkntpath("C:\\𐌰𐌱𐌲𐌳\\𐌴𐌵𐌶𐌷", p));
   EXPECT_STREQ(u"C:\\𐌰𐌱𐌲𐌳\\𐌴𐌵𐌶𐌷", p);
 }
+
+TEST(mkntpath, testRemoveDoubleSlash) {
+  EXPECT_EQ(21, __mkntpath("C:\\Users\\jart\\\\.config", p));
+  EXPECT_STREQ(u"C:\\Users\\jart\\.config", p);
+}
+
+#endif /* SupportsWindows() */

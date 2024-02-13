@@ -1,5 +1,5 @@
-/*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+/*-*- mode:c;indent-tabs-mode:t;c-basic-offset:8;tab-width:8;coding:utf-8   -*-│
+│ vi: set et ft=c ts=8 sw=8 fenc=utf-8                                     :vi │
 ╚──────────────────────────────────────────────────────────────────────────────╝
 │                                                                              │
 │  Musl Libc                                                                   │
@@ -25,16 +25,19 @@
 │  SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                      │
 │                                                                              │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/alg/alg.h"
+#include "third_party/musl/glob.h"
 #include "libc/calls/calls.h"
 #include "libc/calls/struct/dirent.h"
 #include "libc/calls/struct/stat.h"
 #include "libc/errno.h"
+#include "libc/mem/alg.h"
 #include "libc/mem/mem.h"
 #include "libc/str/str.h"
 #include "libc/sysv/consts/dt.h"
+#include "libc/sysv/consts/s.h"
 #include "third_party/musl/fnmatch.h"
-#include "third_party/musl/glob.h"
+
+#define MAXPATH 1024
 
 asm(".ident\t\"\\n\\n\
 Musl libc (MIT License)\\n\
@@ -80,7 +83,7 @@ static int PerformGlob(char *buf, size_t pos, int type, char *pat, int flags,
   /* Special-case the remaining pattern being all slashes, in
    * which case we can use caller-passed type if it's a dir. */
   if (*pat && type != DT_DIR) type = 0;
-  while (pos + 1 < PATH_MAX && *pat == '/') {
+  while (pos + 1 < MAXPATH && *pat == '/') {
     buf[pos++] = *pat++;
   }
   /* Consume maximal [escaped-]literal prefix of pattern, copying
@@ -121,7 +124,7 @@ static int PerformGlob(char *buf, size_t pos, int type, char *pat, int flags,
      * must be remembered and handled later only if the bracket
      * is unterminated (and thereby a literal), so as not to
      * disallow long bracket expressions with short matches. */
-    if (pos + (j + 1) < PATH_MAX) {
+    if (pos + (j + 1) < MAXPATH) {
       buf[pos + j++] = pat[i];
     } else if (in_bracket) {
       overflow = 1;
@@ -175,7 +178,7 @@ static int PerformGlob(char *buf, size_t pos, int type, char *pat, int flags,
       continue;
     }
     l = strlen(de->d_name);
-    if (l >= PATH_MAX - pos) continue;
+    if (l >= MAXPATH - pos) continue;
     if (p2) *p2 = 0;
     fnm_flags = ((flags & GLOB_NOESCAPE) ? FNM_NOESCAPE : 0) |
                 ((!(flags & GLOB_PERIOD)) ? FNM_PERIOD : 0);
@@ -183,7 +186,7 @@ static int PerformGlob(char *buf, size_t pos, int type, char *pat, int flags,
     /* With GLOB_PERIOD don't allow matching . or .. unless fnmatch()
      * would match them with FNM_PERIOD rules in effect. */
     if (p2 && (flags & GLOB_PERIOD) && de->d_name[0] == '.' &&
-        (!de->d_name[1] || de->d_name[1] == '.' && !de->d_name[2]) &&
+        (!de->d_name[1] || (de->d_name[1] == '.' && !de->d_name[2])) &&
         fnmatch(pat, de->d_name, fnm_flags | FNM_PERIOD)) {
       continue;
     }
@@ -244,7 +247,7 @@ int glob(const char *pat, int flags, int errfunc(const char *path, int err),
          glob_t *g) {
   int error = 0;
   size_t cnt, i;
-  char *p, **pathv, buf[PATH_MAX];
+  char **pathv, buf[MAXPATH];
   struct GlobList head = {.next = NULL}, *tail = &head;
   size_t offs = (flags & GLOB_DOOFFS) ? g->gl_offs : 0;
   if (!errfunc) errfunc = IgnoreGlobError;

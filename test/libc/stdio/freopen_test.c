@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2021 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -24,7 +24,9 @@
  * https://github.com/jart/cosmopolitan/issues/61#issuecomment-792214575
  */
 
-char testlib_enable_tmp_setup_teardown;
+void SetUpOnce(void) {
+  testlib_enable_tmp_setup_teardown();
+}
 
 int writefile(const char* filename) {
   int stat = 0;

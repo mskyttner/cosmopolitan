@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,31 +16,29 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/assert.h"
-#include "libc/errno.h"
 #include "libc/stdio/stdio.h"
 
 /**
- * Reads content from stream.
+ * Reads line from stream.
  *
  * This function is similar to getline() except it'll truncate lines
  * exceeding size. The line ending marker is included and may be removed
  * using chomp().
+ *
+ * When reading from the console on Windows in `ICANON` mode, the
+ * returned line will end with `\r\n` rather than `\n`.
+ *
+ * @param s is output buffer
+ * @param size is capacity of s
+ * @param f is non-null file object stream pointer
+ * @return s on success, NULL on error, or NULL if EOF happens when
+ *     zero characters have been read
+ * @see fgets_unlocked()
  */
 char *fgets(char *s, int size, FILE *f) {
-  int c;
-  char *p;
-  p = s;
-  if (size > 0) {
-    while (--size > 0) {
-      if ((c = getc(f)) == -1) {
-        if (ferror(f) == EINTR) continue;
-        break;
-      }
-      *p++ = c & 0xff;
-      if (c == '\n') break;
-    }
-    *p = '\0';
-  }
-  return p > s ? s : NULL;
+  char *res;
+  flockfile(f);
+  res = fgets_unlocked(s, size, f);
+  funlockfile(f);
+  return res;
 }

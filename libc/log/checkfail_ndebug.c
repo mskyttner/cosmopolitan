@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,10 +16,11 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/errno.h"
-#include "libc/fmt/itoa.h"
+#include "libc/intrin/kprintf.h"
+#include "libc/intrin/weaken.h"
 #include "libc/log/internal.h"
 #include "libc/log/log.h"
+#include "libc/runtime/internal.h"
 #include "libc/runtime/runtime.h"
 
 /**
@@ -32,19 +33,69 @@
  *
  * @see libc/log/thunks/__check_fail_ndebug.S
  */
-relegated void ___check_fail_ndebug(uint64_t want, uint64_t got,
-                                    const char *opchar) {
-  char bx[21];
-  int lasterr;
-  lasterr = errno;
-  __start_fatal_ndebug();
-  __print_string("check failed: 0x");
-  __print(bx, uint64toarray_radix16(want, bx));
-  __print_string(" ");
-  __print_string(opchar);
-  __print_string(" 0x");
-  __print(bx, uint64toarray_radix16(got, bx));
-  __print_string(" (");
-  __print(bx, int64toarray_radix10(lasterr, bx));
-  __print_string(")\r\n");
+static relegated wontreturn void __check_fail_ndebug(uint64_t want,       //
+                                                     uint64_t got,        //
+                                                     const char *file,    //
+                                                     int line,            //
+                                                     const char *opchar,  //
+                                                     const char *fmt,     //
+                                                     va_list va) {
+  __restore_tty();
+  kprintf("%rerror:%s:%d: check failed: %'ld %s %'ld% m", file, line, want,
+          opchar, got);
+  if (fmt && *fmt) {
+    kprintf(": ");
+    kvprintf(fmt, va);
+  }
+  kprintf("\n");
+  if (_weaken(__die)) _weaken(__die)();
+  _Exit(68);
+}
+
+void __check_fail_eq(uint64_t want, uint64_t got, const char *file, int line,
+                     const char *opchar, const char *fmt, ...) {
+  va_list va;
+  va_start(va, fmt);
+  __check_fail_ndebug(want, got, file, line, opchar, fmt, va);
+  va_end(va);
+}
+
+void __check_fail_ne(uint64_t want, uint64_t got, const char *file, int line,
+                     const char *opchar, const char *fmt, ...) {
+  va_list va;
+  va_start(va, fmt);
+  __check_fail_ndebug(want, got, file, line, opchar, fmt, va);
+  va_end(va);
+}
+
+void __check_fail_le(uint64_t want, uint64_t got, const char *file, int line,
+                     const char *opchar, const char *fmt, ...) {
+  va_list va;
+  va_start(va, fmt);
+  __check_fail_ndebug(want, got, file, line, opchar, fmt, va);
+  va_end(va);
+}
+
+void __check_fail_lt(uint64_t want, uint64_t got, const char *file, int line,
+                     const char *opchar, const char *fmt, ...) {
+  va_list va;
+  va_start(va, fmt);
+  __check_fail_ndebug(want, got, file, line, opchar, fmt, va);
+  va_end(va);
+}
+
+void __check_fail_ge(uint64_t want, uint64_t got, const char *file, int line,
+                     const char *opchar, const char *fmt, ...) {
+  va_list va;
+  va_start(va, fmt);
+  __check_fail_ndebug(want, got, file, line, opchar, fmt, va);
+  va_end(va);
+}
+
+void __check_fail_gt(uint64_t want, uint64_t got, const char *file, int line,
+                     const char *opchar, const char *fmt, ...) {
+  va_list va;
+  va_start(va, fmt);
+  __check_fail_ndebug(want, got, file, line, opchar, fmt, va);
+  va_end(va);
 }

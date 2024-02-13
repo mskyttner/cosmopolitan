@@ -1,62 +1,43 @@
 #ifndef COSMOPOLITAN_LIBC_FMT_CONV_H_
 #define COSMOPOLITAN_LIBC_FMT_CONV_H_
-#include "libc/calls/struct/timespec.h"
-#include "libc/calls/struct/timeval.h"
-#include "libc/nt/struct/filetime.h"
-
-/*───────────────────────────────────────────────────────────────────────────│─╗
-│ cosmopolitan § conversion                                                ─╬─│┼
-╚────────────────────────────────────────────────────────────────────────────│*/
-
-#define MODERNITYSECONDS 11644473600ull
-#define HECTONANOSECONDS 10000000ull
-
-#if !(__ASSEMBLER__ + __LINKER__ + 0)
 COSMOPOLITAN_C_START_
 
 int abs(int) libcesque pureconst;
 long labs(long) libcesque pureconst;
 long long llabs(long long) libcesque pureconst;
-int llog10(unsigned long) libcesque pureconst;
+libcesque intmax_t imaxabs(intmax_t) pureconst;
 int atoi(const char *) paramsnonnull() libcesque;
 long atol(const char *) paramsnonnull() libcesque;
 long long atoll(const char *) paramsnonnull() libcesque;
-unsigned long strtoul(const char *, char **, int) paramsnonnull((1));
-long long strtoll(const char *, char **, int) paramsnonnull((1));
+unsigned long strtoul(const char *, char **, int) libcesque paramsnonnull((1));
+long long strtoll(const char *, char **, int) libcesque paramsnonnull((1));
 unsigned long long strtoull(const char *, char **, int) paramsnonnull((1));
-long long strtonum(const char *, long long, long long, const char **);
-intmax_t div10(intmax_t, unsigned *) hidden;
-intmax_t strtoimax(const char *, char **, int) paramsnonnull((1));
-uintmax_t strtoumax(const char *, char **, int) paramsnonnull((1));
-intmax_t wcstoimax(const wchar_t *, wchar_t **, int);
-long wcstol(const wchar_t *, wchar_t **, int);
+intmax_t strtoimax(const char *, char **, int) libcesque paramsnonnull((1));
+uintmax_t strtoumax(const char *, char **, int) libcesque paramsnonnull((1));
+intmax_t wcstoimax(const wchar_t *, wchar_t **, int) libcesque;
+uintmax_t wcstoumax(const wchar_t *, wchar_t **, int) libcesque;
+long wcstol(const wchar_t *, wchar_t **, int) libcesque;
+unsigned long wcstoul(const wchar_t *, wchar_t **, int) libcesque;
 long strtol(const char *, char **, int) paramsnonnull((1)) libcesque;
+long sizetol(const char *, long) paramsnonnull() libcesque;
+char *sizefmt(char *, uint64_t, uint64_t) libcesque;
+long long wcstoll(const wchar_t *, wchar_t **, int) libcesque;
+unsigned long long wcstoull(const wchar_t *, wchar_t **, int) libcesque;
+int wcscoll(const wchar_t *, const wchar_t *) libcesque;
+size_t wcsxfrm(wchar_t *, const wchar_t *, size_t) libcesque;
 
-/*───────────────────────────────────────────────────────────────────────────│─╗
-│ cosmopolitan § conversion » time                                         ─╬─│┼
-╚────────────────────────────────────────────────────────────────────────────│*/
+double atof(const char *) libcesque;
+float strtof(const char *, char **) libcesque;
+double strtod(const char *, char **) libcesque;
+long double strtold(const char *, char **) libcesque;
+float wcstof(const wchar_t *, wchar_t **) libcesque;
+double wcstod(const wchar_t *, wchar_t **) libcesque;
+long double wcstold(const wchar_t *, wchar_t **) libcesque;
 
-int64_t DosDateTimeToUnix(unsigned, unsigned);
-struct timespec FileTimeToTimeSpec(struct NtFileTime);
-struct NtFileTime TimeSpecToFileTime(struct timespec);
-struct NtFileTime TimeToFileTime(int64_t) nothrow pureconst;
-int64_t filetimetotime(struct NtFileTime) nothrow pureconst;
-void FileTimeToTimeVal(struct timeval *, struct NtFileTime) nothrow;
-struct NtFileTime TimeValToFileTime(const struct timeval *) nosideeffect;
-long convertmicros(const struct timeval *, long) paramsnonnull() nosideeffect;
-
-/*───────────────────────────────────────────────────────────────────────────│─╗
-│ cosmopolitan § conversion » manipulation                                 ─╬─│┼
-╚────────────────────────────────────────────────────────────────────────────│*/
-
-char *dirname(char *);
-char *basename(const char *) nosideeffect;
-char *basename_n(const char *, size_t) nosideeffect;
-bool isabspath(const char *) paramsnonnull() nosideeffect;
-
-/*───────────────────────────────────────────────────────────────────────────│─╗
-│ cosmopolitan § conversion » computation                                  ─╬─│┼
-╚────────────────────────────────────────────────────────────────────────────│*/
+#ifdef _COSMO_SOURCE
+char *stripext(char *) libcesque;
+char *stripexts(char *) libcesque;
+#endif /* _COSMO_SOURCE */
 
 typedef struct {
   int quot;
@@ -78,14 +59,10 @@ typedef struct {
   intmax_t rem;
 } imaxdiv_t;
 
-div_t div(int, int) pureconst;
-ldiv_t ldiv(long, long) pureconst;
-lldiv_t lldiv(long long, long long) pureconst;
-imaxdiv_t imaxdiv(intmax_t, intmax_t) pureconst;
-
-/*───────────────────────────────────────────────────────────────────────────│─╗
-│ cosmopolitan § conversion » optimizations                                ─╬─│┼
-╚────────────────────────────────────────────────────────────────────────────│*/
+libcesque div_t div(int, int) pureconst;
+libcesque ldiv_t ldiv(long, long) pureconst;
+libcesque lldiv_t lldiv(long long, long long) pureconst;
+libcesque imaxdiv_t imaxdiv(intmax_t, intmax_t) pureconst;
 
 #if __STDC_VERSION__ + 0 >= 199901L
 #define div(num, den)   ((div_t){(num) / (den), (num) % (den)})
@@ -93,11 +70,5 @@ imaxdiv_t imaxdiv(intmax_t, intmax_t) pureconst;
 #define lldiv(num, den) ((lldiv_t){(num) / (den), (num) % (den)})
 #endif
 
-#ifndef __STRICT_ANSI__
-intmax_t __imaxabs(intmax_t) libcesque pureconst;
-#define imaxabs(x) __imaxabs(x)
-#endif /* !ANSI */
-
 COSMOPOLITAN_C_END_
-#endif /* !(__ASSEMBLER__ + __LINKER__ + 0) */
 #endif /* COSMOPOLITAN_LIBC_FMT_CONV_H_ */

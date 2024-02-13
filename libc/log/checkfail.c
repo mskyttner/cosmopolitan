@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,71 +16,61 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/bits/bits.h"
-#include "libc/bits/safemacros.internal.h"
-#include "libc/bits/weaken.h"
 #include "libc/calls/calls.h"
-#include "libc/dce.h"
 #include "libc/errno.h"
-#include "libc/fmt/fmt.h"
+#include "libc/intrin/kprintf.h"
+#include "libc/intrin/safemacros.internal.h"
+#include "libc/intrin/strace.internal.h"
 #include "libc/log/check.h"
 #include "libc/log/color.internal.h"
 #include "libc/log/internal.h"
+#include "libc/log/libfatal.internal.h"
 #include "libc/log/log.h"
-#include "libc/runtime/memtrack.h"
+#include "libc/runtime/memtrack.internal.h"
 #include "libc/runtime/runtime.h"
+#include "libc/stdio/stdio.h"
 #include "libc/str/str.h"
-#include "libc/sysv/consts/auxv.h"
-#include "libc/sysv/consts/fileno.h"
 
 /**
  * Handles failure of CHECK_xx() macros.
  */
-relegated void __check_fail(const char *suffix, const char *opstr,
-                            uint64_t want, const char *wantstr, uint64_t got,
-                            const char *gotstr, const char *file, int line,
-                            const char *fmt, ...) {
+relegated void __check_fail(const char *suffix,   //
+                            const char *opstr,    //
+                            uint64_t want,        //
+                            const char *wantstr,  //
+                            uint64_t got,         //
+                            const char *gotstr,   //
+                            const char *file,     //
+                            int line,             //
+                            const char *fmt,      //
+                            ...) {
   size_t i;
   va_list va;
-  char sufbuf[8];
   char hostname[32];
-  int lasterr = errno;
+  strace_enabled(-1);
+  ftrace_enabled(-1);
   __start_fatal(file, line);
-
-  if (!memccpy(sufbuf, suffix, '\0', sizeof(sufbuf))) strcpy(sufbuf, "?");
-  strtoupper(sufbuf);
-  strcpy(hostname, "unknown");
+  __stpcpy(hostname, "unknown");
   gethostname(hostname, sizeof(hostname));
-
-  (dprintf)(STDERR_FILENO,
-            "check failed on %s pid %d\r\n"
-            "\tCHECK_%s(%s, %s);\r\n"
-            "\t\t → %#lx (%s)\r\n"
-            "\t\t%s %#lx (%s)\r\n",
-            hostname, getpid(), sufbuf, wantstr, gotstr, want, wantstr, opstr,
-            got, gotstr);
-
+  kprintf("check failed on %s pid %d\n"
+          "\tCHECK_%^s(%s, %s);\n"
+          "\t\t → %p (%s)\n"
+          "\t\t%s %p (%s)\n",       //
+          hostname, getpid(),       //
+          suffix, wantstr, gotstr,  //
+          want, wantstr,            //
+          opstr, got, gotstr);
   if (!isempty(fmt)) {
-    (dprintf)(STDERR_FILENO, "\t");
+    kprintf("\t");
     va_start(va, fmt);
-    (vdprintf)(STDERR_FILENO, fmt, va);
+    kvprintf(fmt, va);
     va_end(va);
-    (dprintf)(STDERR_FILENO, "\r\n");
+    kprintf("\n");
   }
-
-  (dprintf)(STDERR_FILENO, "\t%s\r\n\t%s%s%s%s\r\n", strerror(lasterr), SUBTLE,
-            getauxval(AT_EXECFN), __argc > 1 ? " \\" : "", RESET);
-
+  kprintf("\t%s\n\t%s%s", strerror(errno), SUBTLE, program_invocation_name);
   for (i = 1; i < __argc; ++i) {
-    (dprintf)(STDERR_FILENO, "\t\t%s%s\r\n", __argv[i],
-              i < __argc - 1 ? " \\" : "");
+    kprintf(" %s", __argv[i]);
   }
-
-  if (!IsTiny() && lasterr == ENOMEM) {
-    (dprintf)(STDERR_FILENO, "\r\n");
-    PrintMemoryIntervals(STDERR_FILENO, &_mmi);
-  }
-
+  kprintf("%s\n", RESET);
   __die();
-  unreachable;
 }

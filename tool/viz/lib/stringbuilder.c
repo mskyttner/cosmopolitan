@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -23,7 +23,7 @@
 #include "libc/x/x.h"
 #include "tool/viz/lib/stringbuilder.h"
 
-static noinline void StringBuilderGrow(size_t need, struct StringBuilder *sb) {
+static dontinline void StringBuilderGrow(size_t need, struct StringBuilder *sb) {
   size_t n2;
   n2 = MAX(16, sb->n);
   while (sb->i + need > n2) n2 += n2 >> 1;

@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2021 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,23 +16,13 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
+#include "libc/stdio/internal.h"
 #include "libc/stdio/stdio.h"
+#include "libc/thread/thread.h"
 
 /**
- * Does nothing since Cosmopolitan currently doesn't support threads.
+ * Acquires reentrant lock on stdio object, blocking if needed.
  */
 void flockfile(FILE *f) {
-}
-
-/**
- * Does nothing since Cosmopolitan currently doesn't support threads.
- */
-void funlockfile(FILE *f) {
-}
-
-/**
- * Does nothing since Cosmopolitan currently doesn't support threads.
- */
-int ftrylockfile(FILE *f) {
-  return 0;
+  pthread_mutex_lock(&f->lock);
 }

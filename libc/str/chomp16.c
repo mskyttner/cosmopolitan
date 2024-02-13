@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -25,6 +25,15 @@
  * @see getline
  */
 char16_t *chomp16(char16_t *line) {
-  if (line) line[strcspn16(line, u"\r\n")] = '\0';
+  size_t i;
+  if (line) {
+    for (i = strlen16(line); i--;) {
+      if (line[i] == '\r' || line[i] == '\n') {
+        line[i] = '\0';
+      } else {
+        break;
+      }
+    }
+  }
   return line;
 }

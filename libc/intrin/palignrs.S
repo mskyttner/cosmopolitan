@@ -1,5 +1,5 @@
 /*-*- mode:unix-assembly; indent-tabs-mode:t; tab-width:8; coding:utf-8     -*-│
-│vi: set et ft=asm ts=8 tw=8 fenc=utf-8                                     :vi│
+│ vi: set noet ft=asm ts=8 sw=8 fenc=utf-8                                 :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -22,7 +22,7 @@
 //
 //	@note	needs ssse3 cf. prescott c. 2004 cf. bulldozer c. 2011
 //	@see	palignr()
-	.align	8
+	.balign	8
 __palignrs:
   	palignr	$0,%xmm1,%xmm0
 	ret

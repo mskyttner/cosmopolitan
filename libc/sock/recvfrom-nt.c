@@ -1,7 +1,7 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
-│ Copyright 2020 Justine Alexandra Roberts Tunney                              │
+│ Copyright 2023 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
 │ Permission to use, copy, modify, and/or distribute this software for         │
 │ any purpose with or without fee is hereby granted, provided that the         │
@@ -16,29 +16,57 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/assert.h"
 #include "libc/calls/internal.h"
+#include "libc/calls/struct/fd.internal.h"
+#include "libc/calls/struct/iovec.h"
+#include "libc/calls/struct/sigset.internal.h"
+#include "libc/nt/struct/iovec.h"
+#include "libc/nt/winsock.h"
 #include "libc/sock/internal.h"
-#include "libc/sock/yoink.inc"
+#include "libc/sock/struct/sockaddr.h"
+#include "libc/sock/syscall_fd.internal.h"
+#include "libc/sysv/consts/msg.h"
+#include "libc/sysv/consts/o.h"
+#include "libc/sysv/errfuns.h"
+#ifdef __x86_64__
 
-/**
- * Performs recv(), recvfrom(), or readv() on Windows NT.
- *
- * @param fd must be a socket
- * @return number of bytes received, or -1 w/ errno
- */
-textwindows ssize_t sys_recvfrom_nt(struct Fd *fd, const struct iovec *iov,
+#define _MSG_OOB      1
+#define _MSG_PEEK     2
+#define _MSG_DONTWAIT 64
+
+struct RecvFromArgs {
+  const struct iovec *iov;
+  size_t iovlen;
+  void *opt_out_srcaddr;
+  uint32_t *opt_inout_srcaddrsize;
+  struct NtIovec iovnt[16];
+};
+
+static textwindows int sys_recvfrom_nt_start(int64_t handle,
+                                             struct NtOverlapped *overlap,
+                                             uint32_t *flags, void *arg) {
+  struct RecvFromArgs *args = arg;
+  return WSARecvFrom(
+      handle, args->iovnt, __iovec2nt(args->iovnt, args->iov, args->iovlen), 0,
+      flags, args->opt_out_srcaddr, args->opt_inout_srcaddrsize, overlap, 0);
+}
+
+textwindows ssize_t sys_recvfrom_nt(int fd, const struct iovec *iov,
                                     size_t iovlen, uint32_t flags,
                                     void *opt_out_srcaddr,
                                     uint32_t *opt_inout_srcaddrsize) {
-  uint32_t got;
-  struct NtIovec iovnt[16];
-  got = 0;
-  if (WSARecvFrom(fd->handle, iovnt, __iovec2nt(iovnt, iov, iovlen), &got,
-                  &flags, opt_out_srcaddr, opt_inout_srcaddrsize, NULL,
-                  NULL) != -1) {
-    return got;
-  } else {
-    return __winsockerr();
-  }
+  if (flags & ~(_MSG_DONTWAIT | _MSG_OOB | _MSG_PEEK)) return einval();
+  ssize_t rc;
+  struct Fd *f = g_fds.p + fd;
+  sigset_t m = __sig_block();
+  bool nonblock = (f->flags & O_NONBLOCK) || (flags & _MSG_DONTWAIT);
+  flags &= ~_MSG_DONTWAIT;
+  rc = __winsock_block(f->handle, flags, nonblock, f->rcvtimeo, m,
+                       sys_recvfrom_nt_start,
+                       &(struct RecvFromArgs){iov, iovlen, opt_out_srcaddr,
+                                              opt_inout_srcaddrsize});
+  __sig_unblock(m);
+  return rc;
 }
+
+#endif /* __x86_64__ */

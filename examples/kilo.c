@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │                                                                              │
 │  Kilo ── A very simple editor in less than 1-kilo lines of code (as          │
@@ -58,14 +58,13 @@ Contact: antirez@gmail.com\"\n\
 #endif
 #define _GNU_SOURCE
 
-#include "libc/alg/alg.h"
-#include "libc/alg/arraylist2.internal.h"
 #include "libc/calls/calls.h"
 #include "libc/calls/termios.h"
 #include "libc/calls/weirdtypes.h"
 #include "libc/errno.h"
-#include "libc/fmt/fmt.h"
 #include "libc/log/log.h"
+#include "libc/mem/alg.h"
+#include "libc/mem/arraylist2.internal.h"
 #include "libc/mem/mem.h"
 #include "libc/runtime/runtime.h"
 #include "libc/stdio/stdio.h"
@@ -154,7 +153,7 @@ void editorSetStatusMessage(const char *fmt, ...);
  * matches and keywords. The file name matches are used in order to match
  * a given syntax with a given file name: if a match pattern starts with a
  * dot, it is matched as the last past of the filename, for example ".c".
- * Otherwise the pattern is just searched inside the filenme, like "Makefile").
+ * Otherwise the pattern is just searched inside the filename, like "Makefile").
  *
  * The list of keywords to highlight is just a list of words, however if they
  * a trailing '|' character is added at the end, they are highlighted in
@@ -249,7 +248,10 @@ fatal:
 int editorReadKey(int64_t fd) {
   int nread;
   char c, seq[3];
-  if ((nread = read(fd, &c, 1)) == -1) exit(1);
+  do {
+    nread = read(fd, &c, 1);
+    if (nread == -1) exit(1);
+  } while (!nread);
 
   while (1) {
     switch (c) {
@@ -267,8 +269,12 @@ int editorReadKey(int64_t fd) {
             if (read(fd, seq + 2, 1) == 0) return CTRL('[');
             if (seq[2] == '~') {
               switch (seq[1]) {
+                case '1':
+                  return HOME_KEY;
                 case '3':
                   return DEL_KEY;
+                case '4':
+                  return END_KEY;
                 case '5':
                   return PAGE_UP;
                 case '6':
@@ -348,7 +354,7 @@ int getCursorPosition(int64_t ifd, int64_t ofd, int *rows, int *cols) {
  * Returns 0 on success, -1 on error. */
 int getWindowSize(int64_t ifd, int64_t ofd, int *rows, int *cols) {
   struct winsize ws;
-  if (getttysize(STDOUT_FILENO, &ws) == -1 || ws.ws_col == 0) {
+  if (tcgetwinsize(1, &ws) == -1 || ws.ws_col == 0) {
     /* ioctl() failed. Try to query the terminal itself. */
     int orig_row, orig_col, retval;
 
@@ -386,7 +392,7 @@ int is_separator(int c) {
 
 /* Return true if the specified row last char is part of a multi line comment
  * that starts at this row or at one before, and does not end at the end
- * of the row but spawns to the next row. */
+ * of the row but spans to the next row. */
 int editorRowHasOpenComment(erow *row) {
   if (row->hl && row->rsize && row->hl[row->rsize - 1] == HL_MLCOMMENT &&
       (row->rsize < 2 || (row->render[row->rsize - 2] != '*' ||
@@ -406,9 +412,9 @@ void editorUpdateSyntax(erow *row) {
   int i, prev_sep, in_string, in_comment;
   char *p;
   const char *const *keywords = E.syntax->keywords;
-  char *scs = E.syntax->singleline_comment_start;
-  char *mcs = E.syntax->multiline_comment_start;
-  char *mce = E.syntax->multiline_comment_end;
+  const char *scs = E.syntax->singleline_comment_start;
+  const char *mcs = E.syntax->multiline_comment_start;
+  const char *mce = E.syntax->multiline_comment_end;
 
   /* Point to the first non-space char. */
   p = row->render;
@@ -532,7 +538,7 @@ void editorUpdateSyntax(erow *row) {
     i++;
   }
 
-  /* Propagate syntax change to the next row if the open commen
+  /* Propagate syntax change to the next row if the open comment
    * state changed. This may recursively affect all the following rows
    * in the file. */
   int oc = editorRowHasOpenComment(row);
@@ -568,7 +574,7 @@ int editorSyntaxToColor(int hl) {
  * setting it in the global state E.syntax. */
 void editorSelectSyntaxHighlight(char *filename) {
   for (unsigned j = 0; j < HLDB_ENTRIES; j++) {
-    struct editorSyntax *s = HLDB + j;
+    const struct editorSyntax *s = HLDB + j;
     unsigned i = 0;
     while (s->filematch[i]) {
       char *p;
@@ -647,7 +653,7 @@ void editorFreeRow(erow *row) {
   free(row->hl);
 }
 
-/* Remove the row at the specified position, shifting the remainign on the
+/* Remove the row at the specified position, shifting the remaining on the
  * top. */
 void editorDelRow(int at) {
   erow *row;
@@ -663,7 +669,7 @@ void editorDelRow(int at) {
 
 /* Turn the editor rows into a single heap-allocated string.
  * Returns the pointer to the heap-allocated string and populate the
- * integer pointed by 'buflen' with the size of the string, escluding
+ * integer pointed by 'buflen' with the size of the string, excluding
  * the final nulterm. */
 char *editorRowsToString(int *buflen) {
   char *buf = NULL, *p;
@@ -738,7 +744,7 @@ void editorInsertChar(int c) {
   erow *row = (filerow >= E.numrows) ? NULL : &E.row[filerow];
 
   /* If the row where the cursor is currently located does not exist in our
-   * logical representaion of the file, add enough empty rows as needed. */
+   * logical representation of the file, add enough empty rows as needed. */
   if (!row) {
     while (E.numrows <= filerow) editorInsertRow(E.numrows, "", 0);
   }
@@ -891,7 +897,7 @@ struct abuf {
 };
 
 static void abAppend(struct abuf *ab, const char *s, int len) {
-  CONCAT(&ab->p, &ab->i, &ab->n, s, len);
+  CONCAT(&ab->p, &ab->i, &ab->n, (void *)s, len);
 }
 
 /* This function writes the whole screen using VT100 escape characters
@@ -913,7 +919,7 @@ void editorRefreshScreen(void) {
         char welcome[80];
         int welcomelen =
             snprintf(welcome, sizeof(welcome),
-                     "Kilo editor -- verison %s\e[0K\r\n", KILO_VERSION);
+                     "Kilo editor -- version %s\e[0K\r\n", KILO_VERSION);
         int padding = (E.screencols - welcomelen) / 2;
         if (padding) {
           abAppend(&ab, "~", 1);

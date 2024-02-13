@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,10 +16,10 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/bits/safemacros.internal.h"
 #include "libc/calls/calls.h"
 #include "libc/calls/internal.h"
 #include "libc/dce.h"
+#include "libc/intrin/safemacros.internal.h"
 #include "libc/log/log.h"
 #include "libc/nt/dll.h"
 #include "libc/nt/enum/filetype.h"
@@ -38,10 +38,12 @@
 #include "libc/stdio/stdio.h"
 #include "libc/sysv/consts/madv.h"
 #include "libc/sysv/consts/o.h"
+#include "libc/time/time.h"
 #include "tool/decode/lib/flagger.h"
 #include "tool/decode/lib/idname.h"
+#if defined(__x86_64__) && SupportsWindows()
 
-char *GetString(struct NtUnicodeString *s) {
+char *GetString(const struct NtUnicodeString *s) {
   static char buf[1024];
   unsigned len = min(sizeof(buf) - 1, s->Length);
   for (unsigned i = 0; i < len; ++i) {
@@ -55,7 +57,7 @@ int NextBestThing(void) {
   int64_t fd = open("/proc/self/maps", O_RDONLY);
   posix_fadvise(fd, 0, 0, MADV_SEQUENTIAL);
   ssize_t wrote;
-  while ((wrote = copyfd(fd, NULL, 1, NULL, 1024 * 64, 0)) != -1) {
+  while ((wrote = copyfd(fd, 1, -1)) != -1) {
     if (wrote == 0) break;
   }
   close(fd);
@@ -80,7 +82,7 @@ const struct IdName kNtStartfFlagNames[] = {
     {0, 0},
 };
 
-noasan void PrintStartupInfo(void) {
+dontasan void PrintStartupInfo(void) {
 #if 0
   printf("\n\
 ╔──────────────────────────────────────────────────────────────────────────────╗\n\
@@ -159,7 +161,7 @@ void PrintStdioInfo(void) {
          ft2str(GetFileType(g_fds.p[2].handle)));
 }
 
-noasan void PrintTeb(void) {
+dontasan void PrintTeb(void) {
   GetCurrentProcessId();
   SetLastError(0x1234);
   printf("\n\
@@ -186,7 +188,7 @@ noasan void PrintTeb(void) {
 }
 
 void PrintPeb(void) {
-  struct NtPeb *peb = NtGetPeb();
+  __seg_gs struct NtPeb *peb = NtGetPeb();
   printf("\n\
 ╔──────────────────────────────────────────────────────────────────────────────╗\n\
 │ new technology § peb                                                         │\n\
@@ -325,8 +327,6 @@ void PrintPeb(void) {
          "pShimData", peb->pShimData);
   printf("0x%04x: %-40s = 0x%lx\n", offsetof(struct NtPeb, AppCompatInfo),
          "AppCompatInfo", peb->AppCompatInfo);
-  printf("0x%04x: %-40s = \"%s\"\n", offsetof(struct NtPeb, CSDVersion),
-         "CSDVersion", GetString(&peb->CSDVersion));
   printf("0x%04x: %-40s = 0x%lx\n",
          offsetof(struct NtPeb, ActivationContextData), "ActivationContextData",
          peb->ActivationContextData);
@@ -382,8 +382,8 @@ void PrintModulesLoadOrder(void) {
       /* struct NtLinkedList InLoadOrderLinks; /\* msdn:reserved *\/ */
       /* struct NtLinkedList InMemoryOrderLinks; */
       /* struct NtLinkedList InInitOrderLinks; /\* msdn:reserved *\/ */
-      printf("0x%p\n", ldr);
-      printf("0x%p vs. 0x%p\n", dll, GetModuleHandleW(dll->FullDllName.Data));
+      printf("%p\n", ldr);
+      printf("%p vs. %p\n", dll, GetModuleHandleW(dll->FullDllName.Data));
       printf("0x%04x: %-40s = 0x%lx\n",
              offsetof(struct NtLdrDataTableEntry, DllBase), "DllBase",
              dll->DllBase);
@@ -456,7 +456,7 @@ void PrintModulesMemoryOrder(void) {
       /* struct NtLinkedList InLoadOrderLinks; /\* msdn:reserved *\/ */
       /* struct NtLinkedList InMemoryOrderLinks; */
       /* struct NtLinkedList InInitOrderLinks; /\* msdn:reserved *\/ */
-      printf("0x%p\n", dll);
+      printf("%p\n", dll);
       printf("0x%04x: %-40s = 0x%lx\n",
              offsetof(struct NtLdrDataTableEntry, DllBase), "DllBase",
              dll->DllBase);
@@ -518,7 +518,6 @@ void PrintModulesMemoryOrder(void) {
 }
 
 int main(int argc, char *argv[]) {
-  showcrashreports();
   if (IsLinux()) {
     return NextBestThing();
   }
@@ -536,3 +535,10 @@ int main(int argc, char *argv[]) {
   PrintModulesMemoryOrder();
   return 0;
 }
+
+#else
+int main(int argc, char *argv[]) {
+  fprintf(stderr, "printpeb not supported on this cpu arch or build config\n");
+  return 1;
+}
+#endif /* __x86_64__ && SupportsWindows() */

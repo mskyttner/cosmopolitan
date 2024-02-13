@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,6 +16,8 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
+#include "libc/calls/calls.h"
+#include "libc/runtime/runtime.h"
 #include "third_party/chibicc/chibicc.h"
 
 long alloc_node_count;
@@ -23,22 +25,33 @@ long alloc_token_count;
 long alloc_obj_count;
 long alloc_type_count;
 
+wontreturn void __oom_hook(size_t request) {
+  tinyprint(2, "error: chibicc ran out of memory\n", NULL);
+  exit(1);
+}
+
+static void *alloc(size_t n, long *c) {
+  void *r;
+  if ((r = calloc(1, n))) {
+    ++*c;
+    return r;
+  } else {
+    __oom_hook(n);
+  }
+}
+
 Node *alloc_node(void) {
-  ++alloc_node_count;
-  return calloc(1, sizeof(Node));
+  return alloc(sizeof(Node), &alloc_node_count);
 }
 
 Token *alloc_token(void) {
-  ++alloc_token_count;
-  return calloc(1, sizeof(Token));
+  return alloc(sizeof(Token), &alloc_token_count);
 }
 
 Obj *alloc_obj(void) {
-  ++alloc_obj_count;
-  return calloc(1, sizeof(Obj));
+  return alloc(sizeof(Obj), &alloc_obj_count);
 }
 
 Type *alloc_type(void) {
-  ++alloc_type_count;
-  return calloc(1, sizeof(Type));
+  return alloc(sizeof(Type), &alloc_type_count);
 }

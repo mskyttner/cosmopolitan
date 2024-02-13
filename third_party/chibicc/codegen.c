@@ -1,3 +1,4 @@
+#include "libc/x/xasprintf.h"
 #include "third_party/chibicc/chibicc.h"
 
 #define GP_MAX 6
@@ -22,32 +23,31 @@ void flushln(void) {
 }
 
 static void processln(char *nextline) {
+#define LASTEQUAL(S) (lastlen == strlen(S) && !memcmp(lastline, S, lastlen))
+  size_t lastlen;
   if (lastline) {
+    lastlen = strlen(lastline);
     // unsophisticated optimization pass to reduce asm noise a little bit
-    if ((!strcmp(lastline, "\txor\t%eax,%eax") &&
-         !strcmp(nextline, "\tcltq")) ||
-        (!strcmp(lastline, "\tmov\t$0x1,%eax") &&
-         !strcmp(nextline, "\tcltq")) ||
-        (!strcmp(lastline, "\tmovslq\t(%rax),%rax") &&
-         !strcmp(nextline, "\tcltq"))) {
+    if ((LASTEQUAL("\txor\t%eax,%eax") && !strcmp(nextline, "\tcltq")) ||
+        (LASTEQUAL("\tmov\t$0x1,%eax") && !strcmp(nextline, "\tcltq")) ||
+        (LASTEQUAL("\tmovslq\t(%rax),%rax") && !strcmp(nextline, "\tcltq"))) {
       free(nextline);
-    } else if (!strcmp(lastline, "\tmov\t(%rax),%rax") &&
+    } else if (LASTEQUAL("\tmov\t(%rax),%rax") &&
                !strcmp(nextline, "\tpush\t%rax")) {
       free(lastline);
       free(nextline);
       lastline = strdup("\tpush\t(%rax)");
-    } else if (!strcmp(lastline, "\tmov\t$0x1,%eax") &&
+    } else if (LASTEQUAL("\tmov\t$0x1,%eax") &&
                !strcmp(nextline, "\tpush\t%rax")) {
       free(lastline);
       free(nextline);
       lastline = strdup("\tpush\t$1");
-    } else if (!strcmp(lastline, "\tpush\t(%rax)") &&
+    } else if (LASTEQUAL("\tpush\t(%rax)") &&
                !strcmp(nextline, "\tpop\t%rdi")) {
       free(lastline);
       free(nextline);
       lastline = strdup("\tmov\t(%rax),%rdi");
-    } else if (!strcmp(lastline, "\tpush\t%rax") &&
-               !strcmp(nextline, "\tpop\t%rdi")) {
+    } else if (LASTEQUAL("\tpush\t%rax") && !strcmp(nextline, "\tpop\t%rdi")) {
       free(lastline);
       free(nextline);
       lastline = strdup("\tmov\t%rax,%rdi");
@@ -58,6 +58,7 @@ static void processln(char *nextline) {
   } else {
     lastline = nextline;
   }
+#undef LASTEQUAL
 }
 
 static void emitlin(char *nextline) {
@@ -66,7 +67,6 @@ static void emitlin(char *nextline) {
 
 void println(char *fmt, ...) {
   va_list ap;
-  char *nextline;
   va_start(ap, fmt);
   emitlin(xvasprintf(fmt, ap));
   va_end(ap);
@@ -104,12 +104,12 @@ void pop2(char *a, char *b) {
   DCHECK_GE(depth, 0);
 }
 
-void pushreg(char *arg) {
+void pushreg(const char *arg) {
   println("\tpush\t%%%s", arg);
   depth++;
 }
 
-void popreg(char *arg) {
+void popreg(const char *arg) {
   println("\tpop\t%%%s", arg);
   depth--;
   DCHECK_GE(depth, 0);
@@ -184,16 +184,19 @@ static void print_align(int align) {
 }
 
 void print_loc(int64_t file, int64_t line) {
+  // TODO: This is broken if file is different? See gperf codegen.
+  return;
   static int64_t lastfile = -1;
   static int64_t lastline = -1;
   char *locbuf, *p;
   if (file != lastfile || line != lastline) {
     locbuf = malloc(2 + 4 + 1 + 20 + 1 + 20 + 1);
     p = stpcpy(locbuf, "\t.loc\t");
-    p += int64toarray_radix10(file, p);
+    p = FormatInt64(p, file);
     *p++ = ' ';
-    int64toarray_radix10(line, p);
+    FormatInt64(p, line);
     emitlin(locbuf);
+    free(locbuf);
     lastfile = file;
     lastline = line;
   }
@@ -257,6 +260,56 @@ static char *reg_ax(int sz) {
       return "%rax";
   }
   UNREACHABLE();
+}
+
+static char *reg_r8(int sz) {
+  switch (sz) {
+    case 1:
+      return "%r8b";
+    case 2:
+      return "%r8w";
+    case 4:
+      return "%r8d";
+    case 8:
+      return "%r8";
+  }
+  UNREACHABLE();
+}
+
+static char *reg_di(int sz) {
+  switch (sz) {
+    case 1:
+      return "%dil";
+    case 2:
+      return "%di";
+    case 4:
+      return "%edi";
+    case 8:
+      return "%rdi";
+  }
+  UNREACHABLE();
+}
+
+static char *reg_si(int sz) {
+  switch (sz) {
+    case 1:
+      return "%sil";
+    case 2:
+      return "%si";
+    case 4:
+      return "%esi";
+    case 8:
+      return "%rsi";
+  }
+  UNREACHABLE();
+}
+
+static const char *gotpcrel(void) {
+  if (opt_pic) {
+    return "@gotpcrel(%rip)";
+  } else {
+    return "";
+  }
 }
 
 // Compute the absolute address of a given node.
@@ -893,6 +946,9 @@ static bool gen_builtin_funcall(Node *node, const char *name) {
   } else if (!strcmp(name, "trap")) {
     emitlin("\tint3");
     return true;
+  } else if (!strcmp(name, "ia32_pause")) {
+    emitlin("\tpause");
+    return true;
   } else if (!strcmp(name, "unreachable")) {
     emitlin("\tud2");
     return true;
@@ -1095,17 +1151,19 @@ static int GetSseIntSuffix(Type *ty) {
   }
 }
 
-static bool IsOverflowArithmetic(Node *node) {
-  return (node->kind == ND_ADD || node->kind == ND_SUB ||
-          node->kind == ND_MUL || node->kind == ND_NEG) &&
-         node->overflow;
-}
-
-static void HandleOverflow(const char *ax) {
-  pop("%rdi");
-  println("\tmov\t%s,(%%rdi)", ax);
-  emitlin("\tseto\t%al");
-  emitlin("\tmovzbl\t%al,%eax");
+static void HandleAtomicArithmetic(Node *node, const char *op) {
+  gen_expr(node->lhs);
+  push();
+  gen_expr(node->rhs);
+  pop("%r9");
+  println("\tmov\t%s,%s", reg_ax(node->ty->size), reg_si(node->ty->size));
+  println("\tmov\t(%%r9),%s", reg_ax(node->ty->size));
+  println("1:\tmov\t%s,%s", reg_ax(node->ty->size), reg_dx(node->ty->size));
+  println("\tmov\t%s,%s", reg_ax(node->ty->size), reg_di(node->ty->size));
+  println("\t%s\t%s,%s", op, reg_si(node->ty->size), reg_dx(node->ty->size));
+  println("\tlock cmpxchg\t%s,(%%r9)", reg_dx(node->ty->size));
+  println("\tjnz\t1b");
+  println("\tmov\t%s,%s", reg_di(node->ty->size), reg_ax(node->ty->size));
 }
 
 // Generate code for a given node.
@@ -1142,7 +1200,7 @@ void gen_expr(Node *node) {
             long double f80;
             uint64_t u64[2];
           } u;
-          memset(&u, 0, sizeof(u));
+          bzero(&u, sizeof(u));
           u.f80 = node->fval;
           g_xfmt_p(fbuf, &u.f80, 19, sizeof(fbuf), 0);
           println("\tmov\t$%lu,%%rax\t# long double %s", u.u64[0], fbuf);
@@ -1166,10 +1224,6 @@ void gen_expr(Node *node) {
       }
     }
     case ND_NEG:
-      if (IsOverflowArithmetic(node)) {
-        gen_expr(node->overflow);
-        push();
-      }
       gen_expr(node->lhs);
       switch (node->ty->kind) {
         case TY_FLOAT:
@@ -1205,9 +1259,6 @@ void gen_expr(Node *node) {
         ax = "%eax";
       }
       println("\tneg\t%s", ax);
-      if (IsOverflowArithmetic(node)) {
-        HandleOverflow(ax);
-      }
       return;
     case ND_VAR:
       gen_addr(node);
@@ -1492,7 +1543,7 @@ void gen_expr(Node *node) {
         println("\tmov\t$%s,%%eax", node->unique_label);
       }
       return;
-    case ND_CAS: {
+    case ND_CAS:
       gen_expr(node->cas_addr);
       push();
       gen_expr(node->cas_new);
@@ -1502,24 +1553,115 @@ void gen_expr(Node *node) {
       load(node->cas_old->ty->base);
       pop("%rdx");  // new
       pop("%rdi");  // addr
-      int sz = node->cas_addr->ty->base->size;
-      println("\tlock cmpxchg %s,(%%rdi)", reg_dx(sz));
-      emitlin("\tsete\t%cl");
-      emitlin("\tje\t1f");
-      println("\tmov\t%s,(%%r8)", reg_ax(sz));
-      emitlin("1:");
-      emitlin("\tmovzbl\t%cl,%eax");
+      println("\tlock cmpxchg %s,(%%rdi)", reg_dx(node->ty->size));
+      println("\tmov\t%s,(%%r8)", reg_ax(node->ty->size));
+      emitlin("\tsetz\t%al");
+      emitlin("\tmovzbl\t%al,%eax");
       return;
-    }
-    case ND_EXCH: {
+    case ND_EXCH_N:
+    case ND_TESTANDSET: {
       gen_expr(node->lhs);
       push();
       gen_expr(node->rhs);
       pop("%rdi");
-      int sz = node->lhs->ty->base->size;
-      println("\txchg\t%s,(%%rdi)", reg_ax(sz));
+      println("\txchg\t%s,(%%rdi)", reg_ax(node->ty->size));
       return;
     }
+    case ND_TESTANDSETA: {
+      gen_expr(node->lhs);
+      push();
+      println("\tmov\t$1,%%eax");
+      pop("%rdi");
+      println("\txchg\t%s,(%%rdi)", reg_ax(node->ty->size));
+      return;
+    }
+    case ND_LOAD: {
+      gen_expr(node->rhs);
+      push();
+      gen_expr(node->lhs);
+      println("\tmov\t(%%rax),%s", reg_ax(node->ty->size));
+      pop("%rdi");
+      println("\tmov\t%s,(%%rdi)", reg_ax(node->ty->size));
+      return;
+    }
+    case ND_LOAD_N: {
+      gen_expr(node->lhs);
+      println("\tmov\t(%%rax),%s", reg_ax(node->ty->size));
+      return;
+    }
+    case ND_STORE: {
+      gen_expr(node->lhs);
+      push();
+      gen_expr(node->rhs);
+      pop("%rdi");
+      println("\tmov\t(%%rax),%s", reg_ax(node->ty->size));
+      println("\tmov\t%s,(%%rdi)", reg_ax(node->ty->size));
+      if (node->memorder) {
+        println("\tmfence");
+      }
+      return;
+    }
+    case ND_STORE_N:
+      gen_expr(node->lhs);
+      push();
+      gen_expr(node->rhs);
+      pop("%rdi");
+      println("\tmov\t%s,(%%rdi)", reg_ax(node->ty->size));
+      if (node->memorder) {
+        println("\tmfence");
+      }
+      return;
+    case ND_CLEAR:
+      gen_expr(node->lhs);
+      println("\tmov\t%%rax,%%rdi");
+      println("\txor\t%%eax,%%eax");
+      println("\tmov\t%s,(%%rdi)", reg_ax(node->ty->size));
+      if (node->memorder) {
+        println("\tmfence");
+      }
+      return;
+    case ND_FETCHADD:
+      gen_expr(node->lhs);
+      push();
+      gen_expr(node->rhs);
+      pop("%rdi");
+      println("\txadd\t%s,(%%rdi)", reg_ax(node->ty->size));
+      return;
+    case ND_FETCHSUB:
+      gen_expr(node->lhs);
+      push();
+      gen_expr(node->rhs);
+      pop("%rdi");
+      println("\tneg\t%s", reg_ax(node->ty->size));
+      println("\txadd\t%s,(%%rdi)", reg_ax(node->ty->size));
+      return;
+    case ND_FETCHXOR:
+      HandleAtomicArithmetic(node, "xor");
+      return;
+    case ND_FETCHAND:
+      HandleAtomicArithmetic(node, "and");
+      return;
+    case ND_FETCHOR:
+      HandleAtomicArithmetic(node, "or");
+      return;
+    case ND_SUBFETCH:
+      gen_expr(node->lhs);
+      push();
+      gen_expr(node->rhs);
+      pop("%rdi");
+      push();
+      println("\tneg\t%s", reg_ax(node->ty->size));
+      println("\txadd\t%s,(%%rdi)", reg_ax(node->ty->size));
+      pop("%rdi");
+      println("\tsub\t%s,%s", reg_di(node->ty->size), reg_ax(node->ty->size));
+      return;
+    case ND_RELEASE:
+      gen_expr(node->lhs);
+      push();
+      pop("%rdi");
+      println("\txor\t%%eax,%%eax");
+      println("\tmov\t%s,(%%rdi)", reg_ax(node->ty->size));
+      return;
     case ND_FPCLASSIFY:
       gen_fpclassify(node->fpc);
       return;
@@ -1608,10 +1750,6 @@ void gen_expr(Node *node) {
       error_tok(node->tok, "invalid expression");
     }
   }
-  if (IsOverflowArithmetic(node)) {
-    gen_expr(node->overflow);
-    push();
-  }
   if (node->lhs->ty->vector_size == 16) {
     gen_expr(node->rhs);
     pushx();
@@ -1638,17 +1776,23 @@ void gen_expr(Node *node) {
     gen_expr(node->lhs);
     pop("%rdi");
   }
-  char *ax, *di, *dx;
+  char *ax, *di;
   if (node->lhs->ty->kind == TY_LONG || node->lhs->ty->base) {
     ax = "%rax";
     di = "%rdi";
-    dx = "%rdx";
   } else {
     ax = "%eax";
     di = "%edi";
-    dx = "%edx";
   }
   switch (node->kind) {
+    case ND_PMOVMSKB:
+      println("\tmovdqu\t(%%rax),%%xmm0");
+      println("\tpmovmskb\t%%xmm0,%%rax");
+      break;
+    case ND_MOVNTDQ:
+      println("\tmovdqu\t(%%rdi),%%xmm0");
+      println("\tmovntdq\t%%xmm0,(%%rax)");
+      break;
     case ND_ADD:
       if (node->lhs->ty->kind == TY_INT128) {
         emitlin("\tadd\t%rdi,%rax");
@@ -2039,9 +2183,6 @@ void gen_expr(Node *node) {
     default:
       error_tok(node->tok, "invalid expression");
   }
-  if (IsOverflowArithmetic(node)) {
-    HandleOverflow(ax);
-  }
 }
 
 void gen_stmt(Node *node) {
@@ -2314,9 +2455,9 @@ static void emit_function_hook(void) {
   if (opt_nop_mcount) {
     print_profiling_nop();
   } else if (opt_fentry) {
-    emitlin("\tcall\t__fentry__@gotpcrel(%rip)");
+    println("\tcall\t__fentry__%s", gotpcrel());
   } else if (opt_pg) {
-    emitlin("\tcall\tmcount@gotpcrel(%rip)");
+    println("\tcall\tmcount%s", gotpcrel());
   } else {
     print_profiling_nop();
   }

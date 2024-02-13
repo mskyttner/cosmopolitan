@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,63 +16,95 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/calls/ntspawn.h"
+#include "libc/calls/syscall_support-nt.internal.h"
+#include "libc/dce.h"
+#include "libc/errno.h"
+#include "libc/limits.h"
 #include "libc/mem/mem.h"
+#include "libc/nt/files.h"
+#include "libc/proc/ntspawn.h"
 #include "libc/str/str.h"
 #include "libc/str/thompike.h"
 #include "libc/str/utf16.h"
+#include "libc/sysv/consts/at.h"
 #include "libc/sysv/errfuns.h"
 
-/**
- * Converts System V argv to Windows-style command line.
- *
- * Escaping is performed and it's designed to round-trip with
- * GetDosArgv() or GetDosArgv(). This function does NOT escape
- * command interpreter syntax, e.g. $VAR (sh), %VAR% (cmd).
- *
- * @param cmdline is output buffer
- * @param prog is used as argv[0]
- * @param argv is an a NULL-terminated array of UTF-8 strings
- * @return freshly allocated lpCommandLine or NULL w/ errno
- * @kudos Daniel Colascione for teaching how to quote
- * @see libc/runtime/dosargv.c
- */
-textwindows noasan int mkntcmdline(char16_t cmdline[ARG_MAX], const char *prog,
-                                   char *const argv[]) {
+#define APPEND(c)     \
+  do {                \
+    if (k == 32766) { \
+      return e2big(); \
+    }                 \
+    cmdline[k++] = c; \
+  } while (0)
+
+static bool NeedsQuotes(const char *s) {
+  if (!*s) {
+    return true;
+  }
+  do {
+    switch (*s) {
+      case '"':
+      case ' ':
+      case '\t':
+      case '\v':
+      case '\n':
+        return true;
+      default:
+        break;
+    }
+  } while (*s++);
+  return false;
+}
+
+static inline int IsAlpha(int c) {
+  return ('A' <= c && c <= 'Z') || ('a' <= c && c <= 'z');
+}
+
+static bool LooksLikeCosmoDrivePath(const char *s) {
+  return s[0] == '/' &&    //
+         IsAlpha(s[1]) &&  //
+         s[2] == '/';
+}
+
+// Converts System V argv to Windows-style command line.
+//
+// Escaping is performed and it's designed to round-trip with
+// GetDosArgv() or GetDosArgv(). This function does NOT escape
+// command interpreter syntax, e.g. $VAR (sh), %VAR% (cmd).
+//
+// @param cmdline is output buffer
+// @param argv is an a NULL-terminated array of UTF-8 strings
+// @return 0 on success, or -1 w/ errno
+// @raise E2BIG if everything is too huge
+// @see "Everyone quotes command line arguments the wrong way" MSDN
+// @see libc/runtime/getdosargv.c
+// @asyncsignalsafe
+textwindows int mkntcmdline(char16_t cmdline[32767], char *const argv[]) {
   char *arg;
-  uint64_t w;
-  wint_t x, y;
   int slashes, n;
-  size_t i, j, k;
   bool needsquote;
-  char16_t cbuf[2];
-  for (arg = prog, k = i = 0; arg; arg = argv[++i]) {
-    if (i) {
-      cmdline[k++] = u' ';
-      if (k == ARG_MAX) return e2big();
+  size_t i, j, k, s;
+  char argbuf[PATH_MAX];
+  for (k = i = 0; argv[i]; ++i) {
+    if (i) APPEND(u' ');
+    if (LooksLikeCosmoDrivePath(argv[i]) &&
+        strlcpy(argbuf, argv[i], PATH_MAX) < PATH_MAX) {
+      mungentpath(argbuf);
+      arg = argbuf;
+    } else {
+      arg = argv[i];
     }
-    needsquote = !arg[0] || arg[strcspn(arg, " \t\n\v\"")];
-    if (needsquote) {
-      cmdline[k++] = u'"';
-      if (k == ARG_MAX) return e2big();
+    if ((needsquote = NeedsQuotes(arg))) {
+      APPEND(u'"');
     }
-    for (j = 0;;) {
-      if (needsquote) {
-        slashes = 0;
-        while (arg[j] && arg[j] == '\\') slashes++, j++;
-        slashes <<= 1;
-        if (arg[j] == '"') slashes++;
-        while (slashes--) {
-          cmdline[k++] = u'\\';
-          if (k == ARG_MAX) return e2big();
-        }
-      }
-      x = arg[j++] & 0xff;
+    for (slashes = j = 0;;) {
+      wint_t x = arg[j++] & 255;
       if (x >= 0300) {
         n = ThomPikeLen(x);
         x = ThomPikeByte(x);
         while (--n) {
-          if ((y = arg[j++] & 0xff)) {
+          wint_t y;
+          if ((y = arg[j++] & 255)) {
             x = ThomPikeMerge(x, y);
           } else {
             x = 0;
@@ -81,18 +113,29 @@ textwindows noasan int mkntcmdline(char16_t cmdline[ARG_MAX], const char *prog,
         }
       }
       if (!x) break;
-      if (!i && x == '/') x = '\\';
-      w = EncodeUtf16(x);
-      do {
-        cmdline[k++] = w;
-        if (k == ARG_MAX) return e2big();
-      } while ((w >>= 16));
+      if (x == '\\') {
+        ++slashes;
+      } else if (x == '"') {
+        APPEND(u'"');
+        APPEND(u'"');
+        APPEND(u'"');
+      } else {
+        for (s = 0; s < slashes; ++s) {
+          APPEND(u'\\');
+        }
+        slashes = 0;
+        uint32_t w = EncodeUtf16(x);
+        do APPEND(w);
+        while ((w >>= 16));
+      }
+    }
+    for (s = 0; s < (slashes << needsquote); ++s) {
+      APPEND(u'\\');
     }
     if (needsquote) {
-      cmdline[k++] = u'"';
-      if (k == ARG_MAX) return e2big();
+      APPEND(u'"');
     }
   }
-  cmdline[k] = u'\0';
+  cmdline[k] = 0;
   return 0;
 }

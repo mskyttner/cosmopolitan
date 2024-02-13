@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╚──────────────────────────────────────────────────────────────────────────────╝
 │                                                                              │
 │  regexec.c - TRE POSIX compatible matching functions (and more).             │
@@ -56,6 +56,7 @@
 │  SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                      │
 │                                                                              │
 ╚─────────────────────────────────────────────────────────────────────────────*/
+#include "libc/assert.h"
 #include "libc/limits.h"
 #include "third_party/regex/tre.inc"
 
@@ -199,7 +200,7 @@ static reg_errcode_t tre_tnfa_run_parallel(const tre_tnfa_t *tnfa,
   regoff_t *tmp_iptr;
 
 #ifdef TRE_MBSTATE
-  memset(&mbstate, '\0', sizeof(mbstate));
+  bzero(&mbstate, sizeof(mbstate));
 #endif /* TRE_MBSTATE */
 
   if (!match_tags)
@@ -393,7 +394,7 @@ static reg_errcode_t tre_tnfa_run_parallel(const tre_tnfa_t *tnfa,
             reach_next_i++;
 
           } else {
-            assert(reach_pos[trans_i->state_id].pos == pos);
+            unassert(reach_pos[trans_i->state_id].pos == pos);
             /* Another path has also reached this state.  We choose
                the winner by examining the tag values for both
                paths. */
@@ -520,7 +521,7 @@ typedef struct tre_backtrack_struct {
 #define BT_STACK_POP()                                                  \
   do {                                                                  \
     int i;                                                              \
-    assert(stack->prev);                                                \
+    unassert(stack->prev);                                              \
     pos = stack->item.pos;                                              \
     str_byte = stack->item.str_byte;                                    \
     state = stack->item.state;                                          \
@@ -579,7 +580,7 @@ static reg_errcode_t tre_tnfa_run_backtrack(const tre_tnfa_t *tnfa,
   int ret;
 
 #ifdef TRE_MBSTATE
-  memset(&mbstate, '\0', sizeof(mbstate));
+  bzero(&mbstate, sizeof(mbstate));
 #endif /* TRE_MBSTATE */
 
   if (!mem) return REG_ESPACE;
@@ -846,8 +847,8 @@ static void tre_fill_pmatch(size_t nmatch, regmatch_t pmatch[], int cflags,
        submatches. */
     i = 0;
     while (i < tnfa->num_submatches && i < nmatch) {
-      if (pmatch[i].rm_eo == -1) assert(pmatch[i].rm_so == -1);
-      assert(pmatch[i].rm_so <= pmatch[i].rm_eo);
+      if (pmatch[i].rm_eo == -1) unassert(pmatch[i].rm_so == -1);
+      unassert(pmatch[i].rm_so <= pmatch[i].rm_eo);
 
       parents = submatch_data[i].parents;
       if (parents != NULL)

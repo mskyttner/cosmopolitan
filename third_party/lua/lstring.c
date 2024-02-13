@@ -1,12 +1,33 @@
-/*
-** $Id: lstring.c $
-** String table (keeps all strings handled by Lua)
-** See Copyright Notice in lua.h
-*/
-
+/*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
+╚──────────────────────────────────────────────────────────────────────────────╝
+│                                                                              │
+│  Lua                                                                         │
+│  Copyright © 2004-2021 Lua.org, PUC-Rio.                                     │
+│                                                                              │
+│  Permission is hereby granted, free of charge, to any person obtaining       │
+│  a copy of this software and associated documentation files (the             │
+│  "Software"), to deal in the Software without restriction, including         │
+│  without limitation the rights to use, copy, modify, merge, publish,         │
+│  distribute, sublicense, and/or sell copies of the Software, and to          │
+│  permit persons to whom the Software is furnished to do so, subject to       │
+│  the following conditions:                                                   │
+│                                                                              │
+│  The above copyright notice and this permission notice shall be              │
+│  included in all copies or substantial portions of the Software.             │
+│                                                                              │
+│  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,             │
+│  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF          │
+│  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.      │
+│  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY        │
+│  CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,        │
+│  TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE           │
+│  SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                      │
+│                                                                              │
+╚─────────────────────────────────────────────────────────────────────────────*/
 #define lstring_c
 #define LUA_CORE
-
+#include "libc/str/str.h"
 #include "third_party/lua/ldebug.h"
 #include "third_party/lua/ldo.h"
 #include "third_party/lua/lmem.h"
@@ -16,7 +37,11 @@
 #include "third_party/lua/lstring.h"
 #include "third_party/lua/lua.h"
 
-/* clang-format off */
+asm(".ident\t\"\\n\\n\
+Lua 5.4.3 (MIT License)\\n\
+Copyright 1994–2021 Lua.org, PUC-Rio.\"");
+asm(".include \"libc/disclaimer.inc\"");
+
 
 /*
 ** Maximum size for string table.
@@ -85,7 +110,7 @@ void luaS_resize (lua_State *L, int nsize) {
   if (nsize < osize)  /* shrinking table? */
     tablerehash(tb->hash, osize, nsize);  /* depopulate shrinking part */
   newvect = luaM_reallocvector(L, tb->hash, osize, nsize, TString*);
-  if (unlikely(newvect == NULL)) {  /* reallocation failed? */
+  if (l_unlikely(newvect == NULL)) {  /* reallocation failed? */
     if (nsize < osize)  /* was it shrinking table? */
       tablerehash(tb->hash, nsize, osize);  /* restore to original size */
     /* leave table as it was */
@@ -168,7 +193,7 @@ void luaS_remove (lua_State *L, TString *ts) {
 
 
 static void growstrtab (lua_State *L, stringtable *tb) {
-  if (unlikely(tb->nuse == MAX_INT)) {  /* too many strings? */
+  if (l_unlikely(tb->nuse == MAX_INT)) {  /* too many strings? */
     luaC_fullgc(L, 1);  /* try to free some... */
     if (tb->nuse == MAX_INT)  /* still too many? */
       luaM_error(L);  /* cannot even create a message... */
@@ -219,7 +244,7 @@ TString *luaS_newlstr (lua_State *L, const char *str, size_t l) {
     return internshrstr(L, str, l);
   else {
     TString *ts;
-    if (unlikely(l >= (MAX_SIZE - sizeof(TString))/sizeof(char)))
+    if (l_unlikely(l >= (MAX_SIZE - sizeof(TString))/sizeof(char)))
       luaM_toobig(L);
     ts = luaS_createlngstrobj(L, l);
     memcpy(getstr(ts), str, l * sizeof(char));
@@ -255,7 +280,7 @@ Udata *luaS_newudata (lua_State *L, size_t s, int nuvalue) {
   Udata *u;
   int i;
   GCObject *o;
-  if (unlikely(s > MAX_SIZE - udatamemoffset(nuvalue)))
+  if (l_unlikely(s > MAX_SIZE - udatamemoffset(nuvalue)))
     luaM_toobig(L);
   o = luaC_newobj(L, LUA_VUSERDATA, sizeudata(nuvalue, s));
   u = gco2u(o);

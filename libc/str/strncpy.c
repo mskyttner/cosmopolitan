@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,6 +16,7 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
+#include "libc/macros.internal.h"
 #include "libc/str/str.h"
 
 /**
@@ -24,19 +25,21 @@
  * 1. If SRC is too long, it's truncated and *not* NUL-terminated.
  * 2. If SRC is too short, the remainder is zero-filled.
  *
- * Please note this function isn't designed to prevent untrustworthy
- * data from modifying memory without authorization; the memccpy()
- * function can be used for that purpose.
- *
- * @return dest
- * @see stpncpy(), memccpy()
+ * @param dst is output buffer
+ * @param src is a nul-terminated string
+ * @param dstlen is size of `dst` buffer
+ * @return dst
  * @asyncsignalsafe
+ * @see stpncpy()
+ * @see strlcpy()
+ * @see memccpy()
  */
-char *strncpy(char *dest, const char *src, size_t stride) {
-  size_t i;
-  for (i = 0; i < stride; ++i) {
-    if (!(dest[i] = src[i])) break;
-  }
-  memset(dest + i, 0, stride - i);
-  return dest;
+char *strncpy(char *dst, const char *src, size_t dstlen) {
+  size_t srclen, cpylen, zerlen;
+  srclen = strlen(src);
+  cpylen = MIN(srclen, dstlen);
+  if (cpylen) memcpy(dst, src, cpylen);
+  zerlen = dstlen - cpylen;
+  if (zerlen) bzero(dst + cpylen, zerlen);
+  return dst;
 }

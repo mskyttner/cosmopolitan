@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2021 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,40 +16,45 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/bits/pushpop.h"
-#include "libc/bits/weaken.h"
-#include "libc/dce.h"
-#include "libc/nt/console.h"
-#include "libc/nt/enum/consolemodeflags.h"
-#include "libc/nt/pedef.internal.h"
-#include "libc/nt/runtime.h"
+#include "libc/cxxabi.h"
+#include "libc/intrin/cxaatexit.internal.h"
+#include "libc/intrin/strace.internal.h"
+#include "libc/intrin/weaken.h"
 #include "libc/runtime/internal.h"
-#include "libc/runtime/runtime.h"
 
 /**
  * Exits process with grace.
  *
  * This calls functions registered by atexit() before terminating
  * the current process, and any associated threads. It also calls
- * all the legacy linker registered destructors in reeverse order
+ * all the legacy linker registered destructors in reversed order
+ *
+ * This implementation allows exit() to be called recursively via
+ * atexit() handlers.
  *
  * @param exitcode is masked with 255
  * @see _Exit()
  * @noreturn
  */
 wontreturn void exit(int exitcode) {
-  const uintptr_t *p;
-  if (weaken(__cxa_finalize)) {
-    weaken(__cxa_finalize)(NULL);
+  STRACE("exit(%d)", exitcode);
+
+  // call thread local c++ object destructors
+  if (_weaken(__cxa_thread_finalize)) {
+    _weaken(__cxa_thread_finalize)();
   }
+
+  // call atexit() and __cxa_atexit() destructors
+  if (_weaken(__cxa_finalize)) {
+    _weaken(__cxa_finalize)(NULL);
+  }
+
+  // call __destructor__ and finiarray destructors
+  const uintptr_t *p;
   for (p = __fini_array_end; p > __fini_array_start;) {
     ((void (*)(void))(*--p))();
   }
-  if (SupportsWindows() && __ntconsolemode) {
-    SetConsoleMode(GetStdHandle(pushpop(kNtStdInputHandle)), __ntconsolemode);
-    SetConsoleMode(GetStdHandle(pushpop(kNtStdOutputHandle)),
-                   kNtEnableProcessedOutput | kNtEnableWrapAtEolOutput |
-                       kNtEnableVirtualTerminalProcessing);
-  }
+
+  // terminate process
   _Exit(exitcode);
 }

@@ -1,5 +1,6 @@
 ![Cosmopolitan Honeybadger](usr/share/img/honeybadger.png)
 
+[![build](https://github.com/jart/cosmopolitan/actions/workflows/build.yml/badge.svg)](https://github.com/jart/cosmopolitan/actions/workflows/build.yml)
 # Cosmopolitan
 
 [Cosmopolitan Libc](https://justine.lol/cosmopolitan/index.html) makes C
@@ -11,74 +12,233 @@ possible performance and the tiniest footprint imaginable.
 
 ## Background
 
-For an introduction to this project, please read the [αcτµαlly pδrταblε
-εxεcµταblε](https://justine.lol/ape.html) blog post and [cosmopolitan
+For an introduction to this project, please read the [actually portable
+executable](https://justine.lol/ape.html) blog post and [cosmopolitan
 libc](https://justine.lol/cosmopolitan/index.html) website. We also have
-[API documentation](https://justine.lol/cosmopolitan/documentation.html).
+[API
+documentation](https://justine.lol/cosmopolitan/documentation.html).
 
 ## Getting Started
 
-If you're doing your development work on Linux or BSD then you need just
-five files to get started. Here's what you do on Linux:
+You can start by obtaining a release of our `cosmocc` compiler from
+<https://cosmo.zip/pub/cosmocc/>.
 
 ```sh
-wget https://justine.lol/cosmopolitan/cosmopolitan-amalgamation-1.0.zip
-unzip cosmopolitan-amalgamation-1.0.zip
-printf 'main() { printf("hello world\\n"); }\n' >hello.c
-gcc -g -Os -static -nostdlib -nostdinc -fno-pie -no-pie -mno-red-zone \
-  -fno-omit-frame-pointer -pg -mnop-mcount \
-  -o hello.com.dbg hello.c -fuse-ld=bfd -Wl,-T,ape.lds \
-  -include cosmopolitan.h crt.o ape.o cosmopolitan.a
-objcopy -S -O binary hello.com.dbg hello.com
+mkdir -p cosmocc
+cd cosmocc
+wget https://cosmo.zip/pub/cosmocc/cosmocc.zip
+unzip cosmocc.zip
 ```
 
-You now have a portable program. Please note that your APE binary will
-assimilate itself as a conventional resident of your platform after the
-first run, so it can be fast and efficient for subsequent executions.
+Here's an example program we can write:
 
-```sh
-./hello.com
-bash -c './hello.com'  # zsh/fish workaround (we upstreamed patches)
+```c
+// hello.c
+#include <stdio.h>
+
+int main() {
+  printf("hello world\n");
+}
 ```
 
-So if you intend to copy the binary to Windows or Mac then please do
-that before you run it, not after.
-
-### MacOS
-
-If you're developing on MacOS you can install the GNU compiler
-collection for x86_64-elf via homebrew:
+It can be compiled as follows:
 
 ```sh
-brew install x86_64-elf-gcc
+cosmocc -o hello hello.c
+./hello
 ```
 
-Then in the above scripts just replace `gcc` and `objcopy` with
-`x86_64-elf-gcc` and `x86_64-elf-objcopy` to compile your APE binary.
-
-### Windows
-
-If you're developing on Windows then you need to download an
-x86_64-pc-linux-gnu toolchain beforehand. See the [Compiling on
-Windows](https://justine.lol/cosmopolitan/windows-compiling.html)
-tutorial. It's needed because the ELF object format is what makes
-universal binaries possible.
-
-## Source Builds
-
-Cosmopolitan can be compiled from source on any Linux distro. GNU make
-needs to be installed beforehand. This is a freestanding hermetic
-repository that bootstraps using a vendored static gcc9 executable.
-No further dependencies are required.
+The Cosmopolitan Libc runtime links some heavyweight troubleshooting
+features by default, which are very useful for developers and admins.
+Here's how you can log system calls:
 
 ```sh
-wget https://justine.lol/cosmopolitan/cosmopolitan-1.0.tar.gz
-tar xf cosmopolitan-1.0.tar.gz  # see releases page
-cd cosmopolitan
-make -j16
+./hello --strace
+```
+
+Here's how you can get a much more verbose log of function calls:
+
+```sh
+./hello --ftrace
+```
+
+You can use the Cosmopolitan's toolchain to build conventional open
+source projects which use autotools. This strategy normally works:
+
+```sh
+export CC=x86_64-unknown-cosmo-cc
+export CXX=x86_64-unknown-cosmo-c++
+./configure --prefix=/opt/cosmos/x86_64
+make -j
+make install
+```
+
+## Cosmopolitan Source Builds
+
+Cosmopolitan can be compiled from source on any of our supported
+platforms. The Makefile will download cosmocc automatically.
+
+It's recommended that you install a systemwide APE Loader. This command
+requires `sudo` access to copy the `ape` command to a system folder and
+register with binfmt_misc on Linux, for even more performance.
+
+```sh
+ape/apeinstall.sh
+```
+
+You can now build the mono repo with any modern version of GNU Make. To
+make life easier, we've included one in the cosmocc toolchain, which is
+guaranteed to be compatible and furthermore includes our extensions for
+doing build system sandboxing.
+
+```sh
+build/bootstrap/make.com -j8
 o//examples/hello.com
-find o -name \*.com | xargs ls -rShal | less
 ```
+
+Since the Cosmopolitan repository is very large, you might only want to
+build one particular thing. Here's an example of a target that can be
+compiled relatively quickly, which is a simple POSIX test that only
+depends on core LIBC packages.
+
+```sh
+rm -rf o//libc o//test
+build/bootstrap/make.com o//test/posix/signal_test.com
+o//test/posix/signal_test.com
+```
+
+Sometimes it's desirable to build a subset of targets, without having to
+list out each individual one. For example if you wanted to build and run
+all the unit tests in the `TEST_POSIX` package, you could say:
+
+```sh
+build/bootstrap/make.com o//test/posix
+```
+
+Cosmopolitan provides a variety of build modes. For example, if you want
+really tiny binaries (as small as 12kb in size) then you'd say:
+
+```sh
+build/bootstrap/make.com m=tiny
+```
+
+You can furthermore cut out the bloat of other operating systems, and
+have Cosmopolitan become much more similar to Musl Libc.
+
+```sh
+build/bootstrap/make.com m=tinylinux
+```
+
+For further details, see [//build/config.mk](build/config.mk).
+
+## Debugging
+
+To print a log of system calls to stderr:
+
+```sh
+cosmocc -o hello hello.c
+./hello --strace
+```
+
+To print a log of function calls to stderr:
+
+```sh
+cosmocc -o hello hello.c
+./hello --ftrace
+```
+
+Both strace and ftrace use the unbreakable kprintf() facility, which is
+able to be sent to a file by setting an environment variable.
+
+```sh
+export KPRINTF_LOG=log
+./hello --strace
+```
+
+## GDB
+
+Here's the recommended `~/.gdbinit` config:
+
+```gdb
+set host-charset UTF-8
+set target-charset UTF-8
+set target-wide-charset UTF-8
+set osabi none
+set complaints 0
+set confirm off
+set history save on
+set history filename ~/.gdb_history
+define asm
+  layout asm
+  layout reg
+end
+define src
+  layout src
+  layout reg
+end
+src
+```
+
+You normally run the `.com.dbg` file under gdb. If you need to debug the
+`.com` file itself, then you can load the debug symbols independently as
+
+```sh
+gdb foo.com -ex 'add-symbol-file foo.com.dbg 0x401000'
+```
+
+## Platform Notes
+
+### Shells
+
+If you use zsh and have trouble running APE programs try `sh -c ./prog`
+or simply upgrade to zsh 5.9+ (since we patched it two years ago). The
+same is the case for Python `subprocess`, old versions of fish, etc.
+
+### Linux
+
+Some Linux systems are configured to launch MZ executables under WINE.
+Other distros configure their stock installs so that APE programs will
+print "run-detectors: unable to find an interpreter". For example:
+
+```sh
+jart@ubuntu:~$ wget https://cosmo.zip/pub/cosmos/bin/dash
+jart@ubuntu:~$ chmod +x dash
+jart@ubuntu:~$ ./dash
+run-detectors: unable to find an interpreter for ./dash
+```
+
+You can fix that by registering APE with `binfmt_misc`:
+
+```sh
+sudo wget -O /usr/bin/ape https://cosmo.zip/pub/cosmos/bin/ape-$(uname -m).elf
+sudo chmod +x /usr/bin/ape
+sudo sh -c "echo ':APE:M::MZqFpD::/usr/bin/ape:' >/proc/sys/fs/binfmt_misc/register"
+sudo sh -c "echo ':APE-jart:M::jartsr::/usr/bin/ape:' >/proc/sys/fs/binfmt_misc/register"
+```
+
+You should be good now. APE will not only work, it'll launch executables
+400µs faster now too. However if things still didn't work out, it's also
+possible to disable `binfmt_misc` as follows:
+
+```sh
+sudo sh -c 'echo -1 > /proc/sys/fs/binfmt_misc/cli'     # remove Ubuntu's MZ interpreter
+sudo sh -c 'echo -1 > /proc/sys/fs/binfmt_misc/status'  # remove ALL binfmt_misc entries
+```
+
+### WSL
+
+It's normally unsafe to use APE in a WSL environment, because it tries
+to run MZ executables as WIN32 binaries within the WSL environment. In
+order to make it safe to use Cosmopolitan software on WSL, run this:
+
+```sh
+sudo sh -c "echo -1 > /proc/sys/fs/binfmt_misc/WSLInterop"
+```
+
+## Discord Chatroom
+
+The Cosmopolitan development team collaborates on the Redbean Discord
+server. You're welcome to join us! <https://discord.gg/FwAVVu7eJ4>
 
 ## Support Vector
 
@@ -86,10 +246,27 @@ find o -name \*.com | xargs ls -rShal | less
 | :---            | ---:        | ---:  |
 | AMD             | K8 Venus    | 2005  |
 | Intel           | Core        | 2006  |
-| New Technology  | Vista       | 2006  |
-| GNU/Systemd     | 2.6.18      | 2007  |
-| XNU's Not UNIX! | 15.6        | 2018  |
-| FreeBSD         | 12          | 2018  |
-| OpenBSD         | 6.4         | 2018  |
-| NetBSD          | 9.1         | 2020  |
-| GNU Make        | 3.80        | 2010  |
+| Linux           | 2.6.18      | 2007  |
+| Windows         | 8 [1]       | 2012  |
+| Mac OS X        | 15.6        | 2018  |
+| OpenBSD         | 7           | 2021  |
+| FreeBSD         | 13          | 2020  |
+| NetBSD          | 9.2         | 2021  |
+
+[1] See our [vista branch](https://github.com/jart/cosmopolitan/tree/vista)
+    for a community supported version of Cosmopolitan that works on Windows
+    Vista and Windows 7.
+
+## Special Thanks
+
+Funding for this project is crowdsourced using
+[GitHub Sponsors](https://github.com/sponsors/jart) and
+[Patreon](https://www.patreon.com/jart). Your support is what makes this
+project possible. Thank you! We'd also like to give special thanks to
+the following groups and individuals:
+
+- [Joe Drumgoole](https://github.com/jdrumgoole)
+- [Rob Figueiredo](https://github.com/robfig)
+- [Wasmer](https://wasmer.io/)
+
+For publicly sponsoring our work at the highest tier.

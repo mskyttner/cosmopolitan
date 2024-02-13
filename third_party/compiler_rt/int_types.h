@@ -1,5 +1,3 @@
-/* clang-format off */
-/* clang-format off */
 /* ===-- int_lib.h - configuration header for compiler-rt  -----------------===
  *
  *                     The LLVM Compiler Infrastructure

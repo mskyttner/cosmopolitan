@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2021 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -17,10 +17,15 @@
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
 #include "libc/calls/calls.h"
+#include "libc/intrin/strace.internal.h"
 
 /**
  * Sets effective group ID.
+ *
+ * @return 0 on success, or -1 w/ errno
+ * @raise EINVAL if euid not in legal range
+ * @raise EPERM if lack privileges
  */
-int setegid(unsigned gid) {
-  return setregid(-1, gid);
+int setegid(uint32_t egid) {
+  return setregid(-1, egid);
 }

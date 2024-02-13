@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,14 +16,14 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/alg/arraylist.internal.h"
-#include "libc/alg/arraylist2.internal.h"
-#include "libc/bits/safemacros.internal.h"
+#include "tool/build/lib/interner.h"
+#include "libc/intrin/safemacros.internal.h"
 #include "libc/mem/mem.h"
 #include "libc/nexgen32e/crc32.h"
+#include "libc/runtime/runtime.h"
+#include "libc/stdckdint.h"
 #include "libc/str/str.h"
 #include "libc/x/x.h"
-#include "tool/build/lib/interner.h"
 
 #define kInitialItems 16
 
@@ -51,7 +51,7 @@ static void rehash(struct InternerObject *it) {
     } while (it->p[j].hash);
     memcpy(&it->p[j], &p[i], sizeof(p[i]));
   }
-  free_s(&p);
+  free(p);
 }
 
 /**
@@ -92,10 +92,12 @@ size_t interncount(const struct Interner *t) {
  * @note use consistent size w/ non-string items
  */
 size_t internobj(struct Interner *t, const void *data, size_t size) {
-  char *item;
+  char *p2;
+  size_t n2;
   unsigned hash;
-  size_t i, step;
+  const char *item;
   struct InternerObject *it;
+  size_t i, off, step, need, bytes;
   step = 0;
   item = data;
   it = (struct InternerObject *)t;
@@ -117,9 +119,25 @@ size_t internobj(struct Interner *t, const void *data, size_t size) {
       step++;
     } while (it->p[i].hash);
   }
+  off = it->pool.i;
+  if (ckd_add(&need, off, size)) abort();
+  if (ckd_add(&need, need, 1)) abort();
+  if (need > it->pool.n) {
+    if (ckd_add(&n2, it->pool.n, 1)) abort();
+    do {
+      if (ckd_add(&n2, n2, n2 >> 1)) abort();
+    } while (need > n2);
+    if (ckd_mul(&bytes, n2, sizeof(*it->pool.p))) abort();
+    if (!(p2 = realloc(it->pool.p, bytes))) abort();
+    it->pool.p = p2;
+    it->pool.n = n2;
+  }
+  memcpy(it->pool.p + off, data, size);
+  it->pool.p[off + size] = 0;
   it->p[i].hash = hash;
-  return (it->p[i].index =
-              CONCAT(&it->pool.p, &it->pool.i, &it->pool.n, item, size));
+  it->p[i].index = off;
+  it->pool.i += size;
+  return off;
 }
 
 /**
@@ -133,4 +151,26 @@ size_t internobj(struct Interner *t, const void *data, size_t size) {
  */
 size_t intern(struct Interner *t, const char *s) {
   return internobj(t, s, strlen(s) + 1);
+}
+
+/**
+ * Returns true if string is interned.
+ */
+bool isinterned(struct Interner *t, const char *s) {
+  unsigned hash;
+  size_t i, n, step;
+  struct InternerObject *it;
+  step = 0;
+  n = strlen(s) + 1;
+  hash = max(1, crc32c(0, s, n));
+  it = (struct InternerObject *)t;
+  do {
+    i = (hash + step * ((step + 1) >> 1)) & (it->n - 1);
+    if (it->p[i].hash == hash && it->p[i].index + n <= it->pool.n &&
+        !memcmp(s, &it->pool.p[it->p[i].index], n)) {
+      return true;
+    }
+    step++;
+  } while (it->p[i].hash);
+  return false;
 }

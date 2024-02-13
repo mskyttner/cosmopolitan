@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2021 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -24,6 +24,6 @@
  */
 bool IsTestnetIp(uint32_t x) {
   return (((x & 0xFFFFFF00u) == 0xC0000200u) /* 192.0.2.0/24 */ ||
-          ((x & 0xFFFFFF00u) == 0xC0000200u) /* 198.51.100.0/24 */ ||
+          ((x & 0xFFFFFF00u) == 0x0c6336400) /* 198.51.100.0/24 */ ||
           ((x & 0xFFFFFF00u) == 0xCB007100u) /* 203.0.113.0/24 */);
 }

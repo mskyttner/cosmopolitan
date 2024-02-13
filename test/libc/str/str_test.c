@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,7 +16,6 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/bits/bits.h"
 #include "libc/str/str.h"
 #include "libc/testlib/testlib.h"
 
@@ -31,15 +30,17 @@ TEST(strlen16, testUnicode) {
   EXPECT_EQ(28, strlen16(u"αcτµαlly pδrταblε εxεcµταblε"));
 }
 
-TEST(strclen, testAegeanNumberSupplementaryPlane) {
+TEST(len, testAegeanNumberSupplementaryPlane) {
   EXPECT_EQ(36, strlen("𐄷𐄸𐄹𐄺𐄻𐄼𐄽𐄾𐄿"));
   EXPECT_EQ(18, strlen16(u"𐄷𐄸𐄹𐄺𐄻𐄼𐄽𐄾𐄿"));
   EXPECT_EQ(9, wcslen(L"𐄷𐄸𐄹𐄺𐄻𐄼𐄽𐄾𐄿"));
-  EXPECT_EQ(9, strclen("𐄷𐄸𐄹𐄺𐄻𐄼𐄽𐄾𐄿"));
-  EXPECT_EQ(9, strclen16(u"𐄷𐄸𐄹𐄺𐄻𐄼𐄽𐄾𐄿"));
   EXPECT_EQ(9, wcslen(L"𐄷𐄸𐄹𐄺𐄻𐄼𐄽𐄾𐄿"));
 }
 
 TEST(strlen16, testCoolKidNulTerminator) {
-  EXPECT_EQ(2, strlen16((const char16_t *)"\x00\xd8\x00\xdc\x00"));
+  union {
+    uint8_t s8[6];
+    char16_t s16[3];
+  } u = {.s8 = {0x00, 0xd8, 0x00, 0xdc, 0x00, 0x00}};
+  EXPECT_EQ(2, strlen16(u.s16));
 }

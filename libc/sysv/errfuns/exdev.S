@@ -1,11 +1,18 @@
 #include "libc/macros.internal.h"
 .text.unlikely
 
-exdev:	.leafprologue
-	.profilable
-	mov	EXDEV(%rip),%eax
-	mov	%eax,errno(%rip)
-	push	$-1
-	pop	%rax
-	.leafepilogue
+	.ftrace1
+exdev:
+	.ftrace2
+#ifdef __x86_64__
+	.leafprologue
+	mov	EXDEV(%rip),%ecx
+	jmp	__errfun
+#elif defined(__aarch64__)
+	adrp	x1,EXDEV
+	ldrsw	x0,[x1,#:lo12:EXDEV]
+	b	__errfun
+#else
+#error "unsupported architecture"
+#endif
 	.endfn	exdev,globl,hidden

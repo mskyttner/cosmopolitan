@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -17,8 +17,7 @@
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
 #include "dsp/tty/tty.h"
-#include "libc/bits/bits.h"
-#include "libc/rand/rand.h"
+#include "libc/stdio/rand.h"
 #include "libc/str/str.h"
 #include "libc/testlib/ezbench.h"
 #include "libc/testlib/testlib.h"
@@ -26,7 +25,9 @@
 char p[16];
 struct TtyCursor c;
 
-void SetUp(void) { rngset(p, sizeof(p), rand64, -1); }
+void SetUp(void) {
+  rngset(p, sizeof(p), _rand64, -1);
+}
 
 TEST(ttymove, sameCoord_doesNothing) {
   c.y = 0;
@@ -144,47 +145,3 @@ TEST(ttymove, left) {
   c.y = 70, c.x = 70;
   MOVE("\e[2D", 70, 68);
 }
-
-/* TEST(ttymove, bench_absmove) { */
-/*   EZBENCH( */
-/*       { */
-/*         c.y = 70; */
-/*         c.x = 30; */
-/*       }, */
-/*       ttymove(&c, p, 7, 9)); */
-/*   ASSERT_STREQ("\e[8;10H", p); */
-/* } */
-
-/* TEST(ttymove, bench_crlf) { */
-/*   EZBENCH( */
-/*       { */
-/*         c.y = 0; */
-/*         c.x = 10; */
-/*       }, */
-/*       ttymove(&c, p, 1, 0)); */
-/*   ASSERT_STREQ("\r\n", p); */
-/* } */
-
-/* TEST(ttymove, bench_forward1) { */
-/*   EZBENCH( */
-/*       { */
-/*         c.y = 0; */
-/*         c.x = 10; */
-/*       }, */
-/*       ttymove(&c, p, 0, 11)); */
-/*   ASSERT_STREQ("\e[C", p); */
-/* } */
-
-/* TEST(ttymove, bench_forward2) { */
-/*   int y2, x2; */
-/*   EZBENCH( */
-/*       { */
-/*         y2 = rand32() & 127; */
-/*         x2 = rand32() & 127; */
-/*         c.y = rand32() & 127; */
-/*         c.x = rand32() & 127; */
-/*       }, */
-/*       ttymove(&c, p, y2, x2)); */
-/*   int z; */
-/*   EZBENCH(z = rand32() & 127, _memcpy(&z, "\e[2C", 4)); */
-/* } */

@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,21 +16,44 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
+#include "libc/errno.h"
 #include "libc/fmt/conv.h"
 #include "libc/limits.h"
+#include "libc/stdckdint.h"
+#include "libc/str/str.h"
 
 /**
- * Decodes decimal number from ASCII string.
+ * Decodes decimal integer from ASCII string.
  *
- * @param s is a non-null NUL-terminated string
- * @return the decoded signed saturated number
- * @note calling strtoimax() directly with base 0 permits greater
- *     flexibility in terms of inputs
+ *     atoi 10⁸              22𝑐         7𝑛𝑠
+ *     strtol 10⁸            37𝑐        12𝑛𝑠
+ *     strtoul 10⁸           35𝑐        11𝑛𝑠
+ *     wcstol 10⁸            30𝑐        10𝑛𝑠
+ *     wcstoul 10⁸           30𝑐        10𝑛𝑠
+ *     strtoimax 10⁸         80𝑐        26𝑛𝑠
+ *     strtoumax 10⁸         78𝑐        25𝑛𝑠
+ *     wcstoimax 10⁸         77𝑐        25𝑛𝑠
+ *     wcstoumax 10⁸         76𝑐        25𝑛𝑠
+ *
+ * @param s is a non-null nul-terminated string
+ * @return the decoded signed saturated integer
+ * @raise ERANGE on overflow
  */
 int atoi(const char *s) {
-  int res;
-  res = strtoimax(s, NULL, 10);
-  if (res < INT_MIN) return INT_MIN;
-  if (res > INT_MAX) return INT_MAX;
-  return res;
+  int x, c, d;
+  do c = *s++;
+  while (c == ' ' || c == '\t');
+  d = c == '-' ? -1 : 1;
+  if (c == '-' || c == '+') c = *s++;
+  for (x = 0; isdigit(c); c = *s++) {
+    if (ckd_mul(&x, x, 10) || ckd_add(&x, x, (c - '0') * d)) {
+      errno = ERANGE;
+      if (d > 0) {
+        return INT_MAX;
+      } else {
+        return INT_MIN;
+      }
+    }
+  }
+  return x;
 }

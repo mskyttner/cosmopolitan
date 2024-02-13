@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2021 Alison Winters                                                │
 │                                                                              │
@@ -17,12 +17,17 @@
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
 #include "libc/assert.h"
+#include "libc/calls/calls.h"
 #include "libc/dce.h"
 #include "libc/sock/sock.h"
 #include "libc/sysv/consts/af.h"
 #include "libc/sysv/consts/o.h"
 #include "libc/sysv/consts/sock.h"
 #include "libc/testlib/testlib.h"
+
+void SetUpOnce(void) {
+  ASSERT_SYS(0, 0, pledge("stdio tty", 0));
+}
 
 TEST(socketpair, testAfUnixStream) {
   int fd[2];

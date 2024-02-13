@@ -1,5 +1,5 @@
-/*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+/*-*- mode:c;indent-tabs-mode:t;c-basic-offset:8;tab-width:8;coding:utf-8   -*-│
+│ vi: set noet ft=c ts=8 sw=8 fenc=utf-8                                   :vi │
 ╚──────────────────────────────────────────────────────────────────────────────╝
 │                                                                              │
 │  Musl Libc                                                                   │
@@ -25,21 +25,24 @@
 │  SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                      │
 │                                                                              │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-
 #include "libc/math.h"
+#include "libc/nexgen32e/x86feature.h"
 
 asm(".ident\t\"\\n\\n\
 Musl libc (MIT License)\\n\
-Copyright 2005-2020 Rich Felker, et. al.\"");
+Copyright 2005-2014 Rich Felker, et. al.\"");
 asm(".include \"libc/disclaimer.inc\"");
-
-/* clang-format off */
+// clang-format off
 
 #define ASUINT64(x) ((union {double f; uint64_t i;}){x}).i
 #define ZEROINFNAN (0x7ff-0x3ff-52-1)
 
 static inline int a_clz_64(uint64_t x)
 {
+#ifdef __GNUC__
+	if (!x) return 63;
+	return __builtin_clzll(x);
+#else
 	uint32_t y;
 	int r;
 	if (x>>32) y=x>>32, r=0; else y=x, r=32;
@@ -48,6 +51,7 @@ static inline int a_clz_64(uint64_t x)
 	if (y>>4) y>>=4; else r |= 4;
 	if (y>>2) y>>=2; else r |= 2;
 	return r | !(y>>1);
+#endif
 }
 
 struct num { uint64_t m; int e; int sign; };
@@ -75,7 +79,6 @@ static void mul(uint64_t *hi, uint64_t *lo, uint64_t x, uint64_t y)
 	uint64_t t1,t2,t3;
 	uint64_t xlo = (uint32_t)x, xhi = x>>32;
 	uint64_t ylo = (uint32_t)y, yhi = y>>32;
-
 	t1 = xlo*ylo;
 	t2 = xlo*yhi + xhi*ylo;
 	t3 = xhi*yhi;
@@ -83,8 +86,59 @@ static void mul(uint64_t *hi, uint64_t *lo, uint64_t x, uint64_t y)
 	*hi = t3 + (t2>>32) + (t1 > *lo);
 }
 
+/**
+ * Performs fused multiply add.
+ *
+ * @return `𝑥 * 𝑦 + 𝑧` rounded as one ternary operation
+ */
 double fma(double x, double y, double z)
 {
+#if defined(__x86_64__) && defined(__FMA__)
+
+	// Intel Haswell+ (c. 2013)
+	// AMD Piledriver+ (c. 2011)
+	asm("vfmadd132sd\t%1,%2,%0" : "+x"(x) : "x"(y), "x"(z));
+	return x;
+
+#elif defined(__x86_64__) && defined(__FMA4__)
+
+	// AMD Bulldozer+ (c. 2011)
+	asm("vfmaddsd\t%3,%2,%1,%0" : "=x"(x) : "x"(x), "x"(y), "x"(z));
+	return x;
+
+#elif defined(__aarch64__)
+
+	asm("fmadd\t%d0,%d1,%d2,%d3" : "=w"(x) : "w"(x), "w"(y), "w"(z));
+	return x;
+
+#elif defined(__powerpc64__)
+
+	asm("fmadd\t%0,%1,%2,%3" : "=d"(x) : "d"(x), "d"(y), "d"(z));
+	return x;
+
+#elif defined(__riscv) && __riscv_flen >= 64
+
+	asm("fmadd.d\t%0,%1,%2,%3" : "=f"(x) : "f"(x), "f"(y), "f"(z));
+	return x;
+
+#elif defined(__s390x__)
+
+	asm("madbr\t%0,\t%1,\t%2" : "+f"(z) : "f"(x), "f"(y));
+	return z;
+
+#else
+/* #pragma STDC FENV_ACCESS ON */
+
+#ifdef __x86_64__
+	if (X86_HAVE(FMA)) {
+		asm("vfmadd132sd\t%1,%2,%0" : "+x"(x) : "x"(y), "x"(z));
+		return x;
+	} else if (X86_HAVE(FMA4)) {
+		asm("vfmaddsd\t%3,%2,%1,%0" : "=x"(x) : "x"(x), "x"(y), "x"(z));
+		return x;
+	}
+#endif
+
 	/* normalize so top 10bits and last bit are 0 */
 	struct num nx, ny, nz;
 	nx = normalize(x);
@@ -111,7 +165,7 @@ double fma(double x, double y, double z)
 	if (d > 0) {
 		if (d < 64) {
 			zlo = nz.m<<d;
-			zhi = nz.m>>64-d;
+			zhi = nz.m>>(64-d);
 		} else {
 			zlo = 0;
 			zhi = nz.m;
@@ -119,7 +173,7 @@ double fma(double x, double y, double z)
 			d -= 64;
 			if (d == 0) {
 			} else if (d < 64) {
-				rlo = rhi<<64-d | rlo>>d | !!(rlo<<64-d);
+				rlo = rhi<<(64-d) | rlo>>d | !!(rlo<<(64-d));
 				rhi = rhi>>d;
 			} else {
 				rlo = 1;
@@ -132,7 +186,7 @@ double fma(double x, double y, double z)
 		if (d == 0) {
 			zlo = nz.m;
 		} else if (d < 64) {
-			zlo = nz.m>>d | !!(nz.m<<64-d);
+			zlo = nz.m>>d | !!(nz.m<<(64-d));
 		} else {
 			zlo = 1;
 		}
@@ -164,7 +218,7 @@ double fma(double x, double y, double z)
 		e += 64;
 		d = a_clz_64(rhi)-1;
 		/* note: d > 0 */
-		rhi = rhi<<d | rlo>>64-d | !!(rlo<<d);
+		rhi = rhi<<d | rlo>>(64-d) | !!(rlo<<d);
 	} else if (rlo) {
 		d = a_clz_64(rlo)-1;
 		if (d < 0)
@@ -215,11 +269,17 @@ double fma(double x, double y, double z)
 		} else {
 			/* only round once when scaled */
 			d = 10;
-			i = ( rhi>>d | !!(rhi<<64-d) ) << d;
+			i = ( rhi>>d | !!(rhi<<(64-d)) ) << d;
 			if (sign)
 				i = -i;
 			r = i;
 		}
 	}
 	return scalbn(r, e);
+
+#endif /* __x86_64__ */
 }
+
+#if LDBL_MANT_DIG == 53 && LDBL_MAX_EXP == 1024
+__weak_reference(fma, fmal);
+#endif

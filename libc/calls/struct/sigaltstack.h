@@ -1,6 +1,6 @@
 #ifndef COSMOPOLITAN_LIBC_CALLS_STRUCT_SIGALTSTACK_H_
 #define COSMOPOLITAN_LIBC_CALLS_STRUCT_SIGALTSTACK_H_
-#if !(__ASSEMBLER__ + __LINKER__ + 0)
+COSMOPOLITAN_C_START_
 
 struct sigaltstack {
   void *ss_sp;
@@ -10,5 +10,7 @@ struct sigaltstack {
 
 typedef struct sigaltstack stack_t;
 
-#endif /* !(__ASSEMBLER__ + __LINKER__ + 0) */
+int sigaltstack(const struct sigaltstack *, struct sigaltstack *) libcesque;
+
+COSMOPOLITAN_C_END_
 #endif /* COSMOPOLITAN_LIBC_CALLS_STRUCT_SIGALTSTACK_H_ */

@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -17,12 +17,23 @@
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
 #include "libc/calls/calls.h"
-#include "libc/calls/internal.h"
+#include "libc/calls/struct/stat.h"
+#include "libc/calls/syscall-nt.internal.h"
+#include "libc/calls/syscall-sysv.internal.h"
 #include "libc/dce.h"
-#include "libc/sysv/consts/at.h"
+#include "libc/errno.h"
+#include "libc/intrin/asan.internal.h"
+#include "libc/intrin/describeflags.internal.h"
+#include "libc/intrin/strace.internal.h"
+#include "libc/intrin/weaken.h"
+#include "libc/sysv/consts/s.h"
+#include "libc/sysv/errfuns.h"
+#include "libc/runtime/zipos.internal.h"
 
 /**
  * Deletes inode and maybe the file too.
+ *
+ * This may be used to delete files and directories and symlinks.
  *
  * @param dirfd is normally AT_FDCWD but if it's an open directory and
  *     path is relative, then path becomes relative to dirfd
@@ -31,9 +42,31 @@
  * @return 0 on success, or -1 w/ errno
  */
 int unlinkat(int dirfd, const char *path, int flags) {
-  if (!IsWindows()) {
-    return sys_unlinkat(dirfd, path, flags);
+  int rc;
+
+  if (IsAsan() && !__asan_is_valid_str(path)) {
+    rc = efault();
+  } else if (_weaken(__zipos_notat) &&
+             (rc = __zipos_notat(dirfd, path)) == -1) {
+    STRACE("zipos unlinkat not supported yet");
+  } else if (!IsWindows()) {
+    rc = sys_unlinkat(dirfd, path, flags);
   } else {
-    return sys_unlinkat_nt(dirfd, path, flags);
+    rc = sys_unlinkat_nt(dirfd, path, flags);
   }
+
+  // POSIX.1 says unlink(directory) raises EPERM but on Linux
+  // it always raises EISDIR, which is so much less ambiguous
+  if (!IsLinux() && rc == -1 && !flags && errno == EPERM) {
+    struct stat st;
+    if (!fstatat(dirfd, path, &st, 0) && S_ISDIR(st.st_mode)) {
+      errno = EISDIR;
+    } else {
+      errno = EPERM;
+    }
+  }
+
+  STRACE("unlinkat(%s, %#s, %#b) → %d% m", DescribeDirfd(dirfd), path, flags,
+         rc);
+  return rc;
 }

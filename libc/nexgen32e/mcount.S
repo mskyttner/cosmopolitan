@@ -1,5 +1,5 @@
 /*-*- mode:unix-assembly; indent-tabs-mode:t; tab-width:8; coding:utf-8     -*-│
-│vi: set et ft=asm ts=8 tw=8 fenc=utf-8                                     :vi│
+│ vi: set noet ft=asm ts=8 sw=8 fenc=utf-8                                 :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -17,11 +17,10 @@
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
 #include "libc/macros.internal.h"
-.real
-.source	__FILE__
-.code16 # ∩ .code32 ∩ .code64
 
 //	Function Profiling Hook.
 //	cc -pg adds this to the start of global functions.
 mcount:	ret
-	.endfn	mcount,weak
+	.endfn	mcount,globl,weak
+	.alias	mcount,_mcount		// aarch64 weirdness?
+	.alias	mcount,.mcount		// freebsd weirdness?

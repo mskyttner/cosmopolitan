@@ -1,12 +1,33 @@
-/*
-** $Id: lparser.c $
-** Lua Parser
-** See Copyright Notice in lua.h
-*/
-
+/*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
+╚──────────────────────────────────────────────────────────────────────────────╝
+│                                                                              │
+│  Lua                                                                         │
+│  Copyright © 2004-2021 Lua.org, PUC-Rio.                                     │
+│                                                                              │
+│  Permission is hereby granted, free of charge, to any person obtaining       │
+│  a copy of this software and associated documentation files (the             │
+│  "Software"), to deal in the Software without restriction, including         │
+│  without limitation the rights to use, copy, modify, merge, publish,         │
+│  distribute, sublicense, and/or sell copies of the Software, and to          │
+│  permit persons to whom the Software is furnished to do so, subject to       │
+│  the following conditions:                                                   │
+│                                                                              │
+│  The above copyright notice and this permission notice shall be              │
+│  included in all copies or substantial portions of the Software.             │
+│                                                                              │
+│  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,             │
+│  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF          │
+│  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.      │
+│  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY        │
+│  CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,        │
+│  TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE           │
+│  SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                      │
+│                                                                              │
+╚─────────────────────────────────────────────────────────────────────────────*/
 #define lparser_c
 #define LUA_CORE
-
+#include "libc/str/str.h"
 #include "third_party/lua/lcode.h"
 #include "third_party/lua/ldebug.h"
 #include "third_party/lua/ldo.h"
@@ -22,7 +43,10 @@
 #include "third_party/lua/ltable.h"
 #include "third_party/lua/lua.h"
 
-/* clang-format off */
+asm(".ident\t\"\\n\\n\
+Lua 5.4.3 (MIT License)\\n\
+Copyright 1994–2021 Lua.org, PUC-Rio.\"");
+asm(".include \"libc/disclaimer.inc\"");
 
 
 /* maximum number of local variables per function (must be smaller
@@ -123,7 +147,7 @@ static void checknext (LexState *ls, int c) {
 ** in line 'where' (if that is not the current line).
 */
 static void check_match (LexState *ls, int what, int who, int where) {
-  if (unlikely(!testnext(ls, what))) {
+  if (l_unlikely(!testnext(ls, what))) {
     if (where == ls->linenumber)  /* all in the same line? */
       error_expected(ls, what);  /* do not need a complex message */
     else {
@@ -512,7 +536,7 @@ static void solvegoto (LexState *ls, int g, Labeldesc *label) {
   Labellist *gl = &ls->dyd->gt;  /* list of goto's */
   Labeldesc *gt = &gl->arr[g];  /* goto to be resolved */
   lua_assert(eqstr(gt->name, label->name));
-  if (unlikely(gt->nactvar < label->nactvar))  /* enter some scope? */
+  if (l_unlikely(gt->nactvar < label->nactvar))  /* enter some scope? */
     jumpscopeerror(ls, gt);
   luaK_patchlist(ls->fs, gt->pc, label->pc);
   for (i = g; i < gl->n - 1; i++)  /* remove goto from pending list */
@@ -1430,7 +1454,7 @@ static void breakstat (LexState *ls) {
 */
 static void checkrepeated (LexState *ls, TString *name) {
   Labeldesc *lb = findlabel(ls, name);
-  if (unlikely(lb != NULL)) {  /* already defined? */
+  if (l_unlikely(lb != NULL)) {  /* already defined? */
     const char *msg = "label '%s' already defined on line %d";
     msg = luaO_pushfstring(ls->L, msg, getstr(name), lb->line);
     luaK_semerror(ls, msg);  /* error */
@@ -1515,7 +1539,7 @@ static void fixforjump (FuncState *fs, int pc, int dest, int back) {
   int offset = dest - (pc + 1);
   if (back)
     offset = -offset;
-  if (unlikely(offset > MAXARG_Bx))
+  if (l_unlikely(offset > MAXARG_Bx))
     luaX_syntaxerror(fs->ls, "control structure too long");
   SETARG_Bx(*jmp, offset);
 }

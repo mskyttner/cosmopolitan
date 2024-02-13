@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -18,24 +18,51 @@
 ╚─────────────────────────────────────────────────────────────────────────────*/
 #include "libc/runtime/runtime.h"
 #include "libc/str/str.h"
-#include "libc/str/tpenc.h"
 #include "libc/str/utf16.h"
 
-static textwindows noasan axdx_t Recode16to8(char *dst, size_t dstsize,
-                                             const char16_t *src) {
+#define abi textwindows dontinstrument
+
+#define ToUpper(c) ((c) >= 'a' && (c) <= 'z' ? (c) - 'a' + 'A' : (c))
+
+__funline int IsAlpha(int c) {
+  return ('A' <= c && c <= 'Z') || ('a' <= c && c <= 'z');
+}
+
+__funline char *MemChr(const char *s, unsigned char c, unsigned long n) {
+  for (; n; --n, ++s) {
+    if ((*s & 255) == c) {
+      return (char *)s;
+    }
+  }
+  return 0;
+}
+
+static abi axdx_t Recode16to8(char *dst, size_t dstsize, const char16_t *src) {
+  bool v;
   axdx_t r;
   uint64_t w;
   wint_t x, y;
-  for (r.ax = 0, r.dx = 0;;) {
+  for (v = false, r.ax = 0, r.dx = 0;;) {
     if (!(x = src[r.dx++])) break;
-    if (IsUtf16Cont(x)) continue;
     if (!IsUcs2(x)) {
-      if (!(y = src[r.dx++])) break;
+      y = src[r.dx++];
       x = MergeUtf16(x, y);
     }
-    for (w = tpenc(x); w && r.ax + 1 < dstsize; w >>= 8) {
-      dst[r.ax++] = w & 0xFF;
+    if (!v) {
+      if (x == '=') {
+        v = true;
+      } else {
+        x = ToUpper(x);
+      }
     }
+    w = tpenc(x);
+    do {
+      if (r.ax + 1 < dstsize) {
+        dst[r.ax++] = w;
+      } else {
+        break;
+      }
+    } while ((w >>= 8));
   }
   if (r.ax < dstsize) {
     dst[r.ax] = 0;
@@ -43,32 +70,62 @@ static textwindows noasan axdx_t Recode16to8(char *dst, size_t dstsize,
   return r;
 }
 
-/**
- * Transcodes NT environment variable block from UTF-16 to UTF-8.
- *
- * @param env is a double NUL-terminated block of key=values
- * @param buf is the new environment which gets double-nul'd
- * @param size is the byte capacity of buf
- * @param envp stores NULL-terminated string pointer list (optional)
- * @param max is the pointer count capacity of envp
- * @return number of variables decoded, excluding NULL-terminator
- */
-textwindows noasan int GetDosEnviron(const char16_t *env, char *buf,
-                                     size_t size, char **envp, size_t max) {
+static abi void FixPath(char *path) {
+  char *p;
+
+  // turn backslash into slash
+  for (p = path; *p; ++p) {
+    if (*p == '\\') {
+      *p = '/';
+    }
+  }
+
+  // turn c:/... into /c/...
+  p = path;
+  if (IsAlpha(p[0]) && p[1] == ':' && p[2] == '/') {
+    p[1] = p[0];
+    p[0] = '/';
+  }
+  for (; *p; ++p) {
+    if (p[0] == ';' && IsAlpha(p[1]) && p[2] == ':' && p[3] == '/') {
+      p[2] = p[1];
+      p[1] = '/';
+    }
+  }
+
+  // turn semicolon into colon
+  for (p = path; *p; ++p) {
+    if (*p == ';') {
+      *p = ':';
+    }
+  }
+}
+
+// Transcodes NT environment variable block from UTF-16 to UTF-8.
+//
+// @param env is a double NUL-terminated block of key=values
+// @param buf is the new environment which gets double-nul'd
+// @param size is the byte capacity of buf
+// @param envp stores NULL-terminated string pointer list (optional)
+// @param max is the pointer count capacity of envp
+// @return number of variables decoded, excluding NULL-terminator
+abi int GetDosEnviron(const char16_t *env, char *buf, size_t size, char **envp,
+                      size_t max) {
   int i;
+  char *p;
   axdx_t r;
   i = 0;
-  if (size) {
-    --size;
-    while (*env) {
-      if (i + 1 < max) envp[i++] = buf;
-      r = Recode16to8(buf, size, env);
-      size -= r.ax + 1;
-      buf += r.ax + 1;
-      env += r.dx;
+  --size;
+  while (*env) {
+    if (i + 1 < max) envp[i++] = buf;
+    r = Recode16to8(buf, size, env);
+    if ((p = MemChr(buf, '=', r.ax)) && IsAlpha(p[1]) && p[2] == ':' &&
+        (p[3] == '\\' || p[3] == '/')) {
+      FixPath(p + 1);
     }
-    *buf = '\0';
+    size -= r.ax + 1;
+    buf += r.ax + 1;
+    env += r.dx;
   }
-  if (i < max) envp[i] = NULL;
   return i;
 }

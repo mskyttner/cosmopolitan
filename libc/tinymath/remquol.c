@@ -1,5 +1,5 @@
-/*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+/*-*- mode:c;indent-tabs-mode:t;c-basic-offset:8;tab-width:8;coding:utf-8   -*-│
+│ vi: set noet ft=c ts=8 sw=8 fenc=utf-8                                   :vi │
 ╚──────────────────────────────────────────────────────────────────────────────╝
 │                                                                              │
 │  Musl Libc                                                                   │
@@ -25,24 +25,19 @@
 │  SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                      │
 │                                                                              │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-
 #include "libc/math.h"
-
-union ldshape {
-	long double f;
-	struct {
-		uint64_t m;
-		uint16_t se;
-	} i;
-};
+#include "libc/tinymath/ldshape.internal.h"
+#if !(LDBL_MANT_DIG == 53 && LDBL_MAX_EXP == 1024)
 
 asm(".ident\t\"\\n\\n\
 Musl libc (MIT License)\\n\
-Copyright 2005-2020 Rich Felker, et. al.\"");
+Copyright 2005-2014 Rich Felker, et. al.\"");
 asm(".include \"libc/disclaimer.inc\"");
+// clang-format off
 
-/* clang-format off */
-
+/**
+ * Computes remainder and part of quotient.
+ */
 long double remquol(long double x, long double y, int *quo)
 {
 	union ldshape ux = {x}, uy = {y};
@@ -73,6 +68,7 @@ long double remquol(long double x, long double y, int *quo)
 	q = 0;
 	if (ex >= ey) {
 		/* x mod y */
+#if LDBL_MANT_DIG == 64
 		uint64_t i, mx, my;
 		mx = ux.i.m;
 		my = uy.i.m;
@@ -101,6 +97,43 @@ long double remquol(long double x, long double y, int *quo)
 		else
 			for (; mx >> 63 == 0; mx *= 2, ex--);
 		ux.i.m = mx;
+#elif LDBL_MANT_DIG == 113
+		uint64_t hi, lo, xhi, xlo, yhi, ylo;
+		xhi = (ux.i2.hi & -1ULL>>16) | 1ULL<<48;
+		yhi = (uy.i2.hi & -1ULL>>16) | 1ULL<<48;
+		xlo = ux.i2.lo;
+		ylo = ux.i2.lo;
+		for (; ex > ey; ex--) {
+			hi = xhi - yhi;
+			lo = xlo - ylo;
+			if (xlo < ylo)
+				hi -= 1;
+			if (hi >> 63 == 0) {
+				xhi = 2*hi + (lo>>63);
+				xlo = 2*lo;
+				q++;
+			} else {
+				xhi = 2*xhi + (xlo>>63);
+				xlo = 2*xlo;
+			}
+			q <<= 1;
+		}
+		hi = xhi - yhi;
+		lo = xlo - ylo;
+		if (xlo < ylo)
+			hi -= 1;
+		if (hi >> 63 == 0) {
+			xhi = hi;
+			xlo = lo;
+			q++;
+		}
+		if ((xhi|xlo) == 0)
+			ex = -120;
+		else
+			for (; xhi >> 48 == 0; xhi = 2*xhi + (xlo>>63), xlo = 2*xlo, ex--);
+		ux.i2.hi = xhi;
+		ux.i2.lo = xlo;
+#endif
 	}
 
 	/* scale result and decide between |x| and |x|-|y| */
@@ -120,3 +153,5 @@ long double remquol(long double x, long double y, int *quo)
 	*quo = sx^sy ? -(int)q : (int)q;
 	return sx ? -x : x;
 }
+
+#endif /* long double is long */

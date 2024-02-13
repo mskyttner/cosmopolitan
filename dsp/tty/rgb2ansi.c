@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -19,7 +19,6 @@
 #include "dsp/core/core.h"
 #include "dsp/tty/quant.h"
 #include "libc/assert.h"
-#include "libc/bits/initializer.internal.h"
 #include "libc/limits.h"
 #include "libc/log/log.h"
 #include "libc/macros.internal.h"
@@ -40,14 +39,15 @@ struct TtyRgb tty2rgb_(struct TtyRgb rgbxt) {
   return g_ansi2rgb_[rgbxt.xt];
 }
 
-__m128 tty2rgbf_(struct TtyRgb rgbxt) {
+ttyrgb_m128 tty2rgbf_(struct TtyRgb rgbxt) {
   rgbxt = g_ansi2rgb_[rgbxt.xt];
-  return (__m128){(int)rgbxt.r, (int)rgbxt.g, (int)rgbxt.b} / 255;
+  return (ttyrgb_m128){(int)rgbxt.r, (int)rgbxt.g, (int)rgbxt.b} / 255;
 }
 
 static int rgb2xterm256_(int r, int g, int b) {
   int cerr, gerr, ir, ig, ib, gray, grai, cr, cg, cb, gv;
-  gray = round(r * .299 + g * .587 + b * .114);
+  gray = round(871024 / 4096299. * r + 8788810 / 12288897. * g +
+               887015 / 12288897. * b);
   grai = gray > 238 ? 23 : (gray - 3) / 10;
   ir = r < 48 ? 0 : r < 115 ? 1 : (r - 35) / 40;
   ig = g < 48 ? 0 : g < 115 ? 1 : (g - 35) / 40;
@@ -98,8 +98,8 @@ static int uncube(int x) {
 }
 
 static textstartup void rgb2ansi_init(void) {
-  uint8_t c, y;
-  uint32_t i, j;
+  uint8_t c;
+  uint32_t i;
   memcpy(g_ansi2rgb_, &kCgaPalette, sizeof(kCgaPalette));
   for (i = 16; i < 232; ++i) {
     g_ansi2rgb_[i].r = kXtermCube[((i - 020) / 044) % 06];

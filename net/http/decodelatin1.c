@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2021 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -39,7 +39,7 @@ char *DecodeLatin1(const char *p, size_t n, size_t *z) {
   if (n == -1) n = p ? strlen(p) : 0;
   if ((q = r = malloc(n * 2 + 1))) {
     for (i = 0; i < n;) {
-      memset(vz, 0, 16); /* 3x speedup for ASCII */
+      bzero(vz, 16); /* 3x speedup for ASCII */
       while (i + 16 < n) {
         memcpy(v1, p + i, 16);
         pcmpgtb(v2, v1, vz);
@@ -53,7 +53,7 @@ char *DecodeLatin1(const char *p, size_t n, size_t *z) {
         *q++ = c;
       } else {
         *q++ = 0300 | c >> 6;
-        *q++ = 0200 | c & 077;
+        *q++ = 0200 | (c & 077);
       }
     }
     if (z) *z = q - r;

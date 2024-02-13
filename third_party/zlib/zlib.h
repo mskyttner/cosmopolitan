@@ -137,25 +137,24 @@
 /* The deflate compression method (the only one supported in this version) */
 #define Z_NULL 0 /* for initializing zalloc, zfree, opaque */
 
-#if !(__ASSEMBLER__ + __LINKER__ + 0)
 COSMOPOLITAN_C_START_
 
 typedef voidpf (*alloc_func)(voidpf opaque, uInt items, uInt size);
 typedef void (*free_func)(voidpf opaque, voidpf address);
 
-struct DeflateState;
+struct internal_state;
 
 typedef struct z_stream_s {
-  const Bytef *next_in;       /* next input byte */
-  uInt avail_in;              /* number of bytes available at next_in */
-  uLong total_in;             /* total number of input bytes read so far */
-  Bytef *next_out;            /* next output byte will go here */
-  uInt avail_out;             /* remaining free space at next_out */
-  uLong total_out;            /* total number of bytes output so far */
-  const char *msg;            /* last error message, NULL if no error */
-  struct DeflateState *state; /* not visible by applications */
-  alloc_func zalloc;          /* used to allocate the internal state */
-  free_func zfree;            /* used to free the internal state */
+  const Bytef *next_in;         /* next input byte */
+  uInt avail_in;                /* number of bytes available at next_in */
+  uLong total_in;               /* total number of input bytes read so far */
+  Bytef *next_out;              /* next output byte will go here */
+  uInt avail_out;               /* remaining free space at next_out */
+  uLong total_out;              /* total number of bytes output so far */
+  const char *msg;              /* last error message, NULL if no error */
+  struct internal_state *state; /* not visible by applications */
+  alloc_func zalloc;            /* used to allocate the internal state */
+  free_func zfree;              /* used to free the internal state */
   voidpf opaque;  /* private data object passed to zalloc and zfree */
   int data_type;  /* best guess about the data type: binary or text
                      for deflate, or the decoding state for inflate */
@@ -171,7 +170,7 @@ typedef z_stream *z_streamp;
  */
 typedef struct gz_header_s {
   int text;       /* true if compressed data believed to be text */
-  uLong time;     /* modification time */
+  uLong time_;    /* modification time */
   int xflags;     /* extra flags (not used when writing a gzip file) */
   int os;         /* operating system */
   Bytef *extra;   /* pointer to extra field or Z_NULL if none */
@@ -1697,6 +1696,11 @@ uLong adler32_combine(uLong adler1, uLong adler2, int64_t len2);
 uLong crc32(uLong crc, const Bytef *buf, uInt len);
 
 /**
+ * Same as crc32(), but with a size_t length.
+ */
+uint32_t crc32_z(uint32_t crc, const void *buf, size_t len);
+
+/**
  * Combine two CRC-32 check values into one. For two sequences of bytes,
  * seq1 and seq2 with lengths len1 and len2, CRC-32 check values were
  * calculated for each, crc1 and crc2. crc32_combine() returns the
@@ -1725,10 +1729,10 @@ int gzgetc_(gzFile file); /* backward compatibility */
 #undef z_gzgetc
 #define z_gzgetc(g) \
   ((g)->have ? ((g)->have--, (g)->pos++, *((g)->next)++) : (gzgetc)(g))
-#elif defined(Z_CR_PREFIX_SET)
+#elif defined(Z_COSMO_PREFIX_SET)
 #undef gzgetc
 #define gzgetc(g) \
-  ((g)->have ? ((g)->have--, (g)->pos++, *((g)->next)++) : (Cr_z_gzgetc)(g))
+  ((g)->have ? ((g)->have--, (g)->pos++, *((g)->next)++) : (__gzgetc)(g))
 #else
 #define gzgetc(g) \
   ((g)->have ? ((g)->have--, (g)->pos++, *((g)->next)++) : (gzgetc)(g))
@@ -1746,5 +1750,4 @@ int gzvprintf(gzFile file, const char *format, va_list va);
 void inflate_fast_chunk(z_streamp strm, unsigned start);
 
 COSMOPOLITAN_C_END_
-#endif /* !(__ASSEMBLER__ + __LINKER__ + 0) */
 #endif /* COSMOPOLITAN_THIRD_PARTY_ZLIB_ZLIB_H_ */

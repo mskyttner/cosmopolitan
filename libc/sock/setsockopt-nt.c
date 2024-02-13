@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2021 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,45 +16,57 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
+#include "libc/calls/struct/fd.internal.h"
 #include "libc/calls/struct/timeval.h"
-#include "libc/macros.internal.h"
+#include "libc/nt/struct/linger.h"
+#include "libc/nt/thunk/msabi.h"
+#include "libc/nt/winsock.h"
 #include "libc/sock/internal.h"
+#include "libc/sock/struct/linger.h"
+#include "libc/sock/syscall_fd.internal.h"
+#include "libc/stdio/sysparam.h"
 #include "libc/sysv/consts/so.h"
+#include "libc/sysv/consts/sol.h"
 #include "libc/sysv/errfuns.h"
+#ifdef __x86_64__
 
-struct linger_nt {   /* Linux+XNU+BSD ABI */
-  uint16_t l_onoff;  /* on/off */
-  uint16_t l_linger; /* seconds */
-};
+__msabi extern typeof(__sys_setsockopt_nt) *const __imp_setsockopt;
 
 textwindows int sys_setsockopt_nt(struct Fd *fd, int level, int optname,
                                   const void *optval, uint32_t optlen) {
-  struct timeval *tv;
-  struct linger *linger;
+
+  // socket read/write timeouts
+  if (level == SOL_SOCKET &&
+      (optname == SO_RCVTIMEO || optname == SO_SNDTIMEO)) {
+    if (!(optval && optlen == sizeof(struct timeval))) return einval();
+    const struct timeval *tv = optval;
+    int64_t ms = timeval_tomillis(*tv);
+    if (ms >= 0xffffffffu) ms = 0;  // wait forever (default)
+    if (optname == SO_RCVTIMEO) fd->rcvtimeo = ms;
+    if (optname == SO_SNDTIMEO) fd->sndtimeo = ms;
+    return 0;  // we want to handle this on our own
+  }
+
+  // how to make close() a blocking i/o call
   union {
     uint32_t millis;
     struct linger_nt linger;
-  } nt;
-
-  if (optname == SO_LINGER && optval && optlen == sizeof(struct linger)) {
-    linger = optval;
-    nt.linger.l_onoff = linger->l_onoff;
-    nt.linger.l_linger = MIN(0xFFFF, MAX(0, linger->l_linger));
-    optval = &nt.linger;
-    optlen = sizeof(nt.linger);
+  } u;
+  if (level == SOL_SOCKET &&             //
+      optname == SO_LINGER && optval &&  //
+      optlen == sizeof(struct linger)) {
+    const struct linger *linger = optval;
+    u.linger.l_onoff = linger->l_onoff;
+    u.linger.l_linger = MIN(0xFFFF, MAX(0, linger->l_linger));
+    optval = &u.linger;
+    optlen = sizeof(u.linger);
   }
 
-  if ((optname == SO_RCVTIMEO || optname == SO_SNDTIMEO) && optval &&
-      optlen == sizeof(struct timeval)) {
-    tv = optval;
-    nt.millis = MIN(0xFFFFFFFF, MAX(0, tv->tv_sec * 1000 + tv->tv_usec / 1000));
-    optval = &nt.millis;
-    optlen = sizeof(nt.millis);
-  }
-
-  if (__sys_setsockopt_nt(fd->handle, level, optname, optval, optlen) != -1) {
+  if (__imp_setsockopt(fd->handle, level, optname, optval, optlen) != -1) {
     return 0;
   } else {
     return __winsockerr();
   }
 }
+
+#endif /* __x86_64__ */

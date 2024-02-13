@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -37,14 +37,15 @@
  * @return 0 on success, or -1 w/ errno
  * @see libc/sysv/consts.sh
  * @asyncsignalsafe
+ * @vforksafe
  */
 int xsigaction(int sig, void *handler, uint64_t flags, uint64_t mask,
                struct sigaction *old) {
   /* This API is superior to sigaction() because (1) it offers feature
      parity; (2) compiler emits 1/3rd as much binary code at call-site;
-     and (3) it removes typing that just whines without added saftey. */
+     and (3) it removes typing that just whines without added safety. */
   struct sigaction sa;
-  memset(&sa, 0, sizeof(sa));
+  bzero(&sa, sizeof(sa));
   sa.sa_handler = handler;
   sa.sa_flags = flags;
   memcpy(&sa.sa_mask, &mask, sizeof(mask));

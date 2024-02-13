@@ -1,5 +1,5 @@
 /*-*- mode:unix-assembly; indent-tabs-mode:t; tab-width:8; coding:utf-8     -*-│
-│vi: set et ft=asm ts=8 tw=8 fenc=utf-8                                     :vi│
+│ vi: set noet ft=asm ts=8 sw=8 fenc=utf-8                                 :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -32,22 +32,18 @@
 __nt2sysv:
 	push	%rbp
 	mov	%rsp,%rbp
-	.profilable
-	sub	$0x100,%rsp
+	sub	$256,%rsp
 	push	%rbx
 	push	%rdi
 	push	%rsi
-	pushf
-	ezlea	_base,bx
-	lea	-0x80(%rbp),%rdi
-	call	_savexmm
+	pushf					// TODO(jart): Do we need it?
+	call	__xmm_save
 	mov	%rcx,%rdi
 	mov	%rdx,%rsi
 	mov	%r8,%rdx
 	mov	%r9,%rcx
 	call	*%rax
-	lea	-0x80(%rbp),%rdi
-	call	_loadxmm
+	call	__xmm_load
 	popf
 	pop	%rsi
 	pop	%rdi
@@ -55,4 +51,3 @@ __nt2sysv:
 	leave
 	ret
 	.endfn	__nt2sysv,globl,hidden
-	.source	__FILE__

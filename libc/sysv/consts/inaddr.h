@@ -19,4 +19,11 @@
 #define INADDR_MAX_LOCAL_GROUP 0xE00000FFu
 #define INADDR_UNSPEC_GROUP    0xE0000000u
 
+#define IN_LOOPBACKNET 127
+
+/* clang-format off */
+#define IN6ADDR_ANY_INIT      { { { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } } }
+#define IN6ADDR_LOOPBACK_INIT { { { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1 } } }
+/* clang-format on */
+
 #endif /* COSMOPOLITAN_LIBC_SYSV_CONSTS_INADDR_H_ */

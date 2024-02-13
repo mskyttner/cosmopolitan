@@ -1,5 +1,5 @@
 /*-*- mode:unix-assembly; indent-tabs-mode:t; tab-width:8; coding:utf-8     -*-│
-│vi: set et ft=asm ts=8 tw=8 fenc=utf-8                                     :vi│
+│ vi: set noet ft=asm ts=8 sw=8 fenc=utf-8                                 :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -27,9 +27,10 @@
 //	@param	%rsi is char[edi/16][16] output and %rsi==%rdx is OK
 //	@param	%rdx is char[edi/16][8] input
 //	@return	%rax is %rsi
+	.ftrace1
 doublechrominance:
+	.ftrace2
 	.leafprologue
-	.profilable
 	shr	$1,%edi			# backwards algorithm
 	jbe	1f			# do nothing if !n || n%2
 	mov	%edi,%ecx
@@ -50,4 +51,3 @@ doublechrominance:
 1:	mov	%rsi,%rax
 	.leafepilogue
 	.endfn	doublechrominance,globl
-	.source	__FILE__

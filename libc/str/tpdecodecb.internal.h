@@ -1,7 +1,6 @@
 #ifndef COSMOPOLITAN_LIBC_STR_TPDECODECB_H_
 #define COSMOPOLITAN_LIBC_STR_TPDECODECB_H_
-#include "libc/nexgen32e/bsr.h"
-#if !(__ASSEMBLER__ + __LINKER__ + 0)
+#include "libc/intrin/bsr.h"
 
 /* TODO(jart): DELETE? */
 
@@ -19,7 +18,7 @@ forceinline int tpdecodecb(wint_t *out, int first,
     if ((wc = get(arg, i++)) == -1) return -1;
   }
   if (__builtin_expect(!(0 <= wc && wc <= 0x7F), 0)) {
-    msb = wc < 252 ? bsr(~wc & 0xff) : 1;
+    msb = wc < 252 ? _bsr(~wc & 0xff) : 1;
     need = 7 - msb;
     wc &= ((1u << msb) - 1) | 0b00000011;
     for (j = 1; j < need; ++j) {
@@ -36,5 +35,4 @@ forceinline int tpdecodecb(wint_t *out, int first,
   return i;
 }
 
-#endif /* !(__ASSEMBLER__ + __LINKER__ + 0) */
 #endif /* COSMOPOLITAN_LIBC_STR_TPDECODECB_H_ */

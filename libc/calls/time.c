@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,8 +16,11 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/calls/struct/timeval.h"
 #include "libc/time/time.h"
+#include "libc/calls/struct/timeval.h"
+#include "libc/dce.h"
+#include "libc/intrin/asan.internal.h"
+#include "libc/sysv/errfuns.h"
 
 /**
  * Returns time as seconds from UNIX epoch.
@@ -27,15 +30,18 @@
  * @asyncsignalsafe
  */
 int64_t time(int64_t *opt_out_ret) {
-  int64_t rc;
+  int64_t secs;
   struct timeval tv;
-  if (gettimeofday(&tv, NULL) == -1) {
-    rc = -1;
+  if (IsAsan() && opt_out_ret &&
+      !__asan_is_valid(opt_out_ret, sizeof(*opt_out_ret))) {
+    secs = efault();
+  } else if (gettimeofday(&tv, 0) != -1) {
+    secs = tv.tv_sec;
+    if (opt_out_ret) {
+      *opt_out_ret = secs;
+    }
   } else {
-    rc = tv.tv_sec;
+    secs = -1;
   }
-  if (opt_out_ret) {
-    *opt_out_ret = rc;
-  }
-  return rc;
+  return secs;
 }

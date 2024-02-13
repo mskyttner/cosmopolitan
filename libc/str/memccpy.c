@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,15 +16,7 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/bits/bits.h"
 #include "libc/str/str.h"
-
-static inline noasan uint64_t UncheckedAlignedRead64(unsigned char *p) {
-  return (uint64_t)(255 & p[7]) << 070 | (uint64_t)(255 & p[6]) << 060 |
-         (uint64_t)(255 & p[5]) << 050 | (uint64_t)(255 & p[4]) << 040 |
-         (uint64_t)(255 & p[3]) << 030 | (uint64_t)(255 & p[2]) << 020 |
-         (uint64_t)(255 & p[1]) << 010 | (uint64_t)(255 & p[0]) << 000;
-}
 
 /**
  * Copies at most N bytes from SRC to DST until 𝑐 is encountered.
@@ -53,40 +45,13 @@ static inline noasan uint64_t UncheckedAlignedRead64(unsigned char *p) {
  * @asyncsignalsafe
  */
 void *memccpy(void *dst, const void *src, int c, size_t n) {
+  char *d;
   size_t i;
-  uint64_t v, w;
-  unsigned char *d;
-  unsigned char *pd;
-  const unsigned char *s;
-  i = 0;
-  d = dst;
-  s = src;
-  c &= 255;
-  v = 0x0101010101010101ul * c;
-  for (; (uintptr_t)(s + i) & 7; ++i) {
-    if (i == n) return NULL;
-    if ((d[i] = s[i]) == c) return d + i + 1;
-  }
-  for (; i + 8 <= n; i += 8) {
-    w = UncheckedAlignedRead64(s + i);
-    if (~(w ^ v) & ((w ^ v) - 0x0101010101010101) & 0x8080808080808080) {
-      break;
-    } else {
-      pd = d + i;
-      pd[0] = (w >> 000) & 255;
-      pd[1] = (w >> 010) & 255;
-      pd[2] = (w >> 020) & 255;
-      pd[3] = (w >> 030) & 255;
-      pd[4] = (w >> 040) & 255;
-      pd[5] = (w >> 050) & 255;
-      pd[6] = (w >> 060) & 255;
-      pd[7] = (w >> 070) & 255;
-    }
-  }
-  for (; i < n; ++i) {
-    if ((d[i] = s[i]) == c) {
+  const char *s;
+  for (d = dst, s = src, i = 0; i < n; ++i) {
+    if (((d[i] = s[i]) & 255) == (c & 255)) {
       return d + i + 1;
     }
   }
-  return NULL;
+  return 0;
 }

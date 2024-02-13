@@ -1,5 +1,5 @@
 /*-*- mode:unix-assembly; indent-tabs-mode:t; tab-width:8; coding:utf-8     -*-│
-│vi: set et ft=asm ts=8 tw=8 fenc=utf-8                                     :vi│
+│ vi: set noet ft=asm ts=8 sw=8 fenc=utf-8                                 :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,8 +16,8 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
+#include "libc/dce.h"
 #include "libc/macros.internal.h"
-.source	__FILE__
 
 //	Obtains WIN32 magic path, e.g. GetTempPathA.
 //
@@ -34,7 +34,13 @@ __getntsyspath:
 	movpp	%rdi,%rcx		# call f=%rax(p1=%rcx,p2=%rdx)
 	sub	$40,%rsp
 	call	*%rax
-	xor	%edx,%edx
+	testb	IsWindows()
+	jz	3f
+	mov	(%rdi),%cl		# turn c:\... into \c\...
+	movb	$'\\',(%rdi)
+	mov	%cl,1(%rdi)
+	movb	$'\\',2(%rdi)
+3:	xor	%edx,%edx
 	mov	-8(%rbp),%ecx		# restore %edx param as %ecx
 	cmp	%eax,%ecx		# use current dir on overflow
 	cmovbe	%edx,%eax

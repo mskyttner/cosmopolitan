@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2021 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -160,14 +160,52 @@ const char *GetHttpHeaderName(int h) {
       return "Transfer-Encoding";
     case kHttpUpgrade:
       return "Upgrade";
-    case kHttpUri:
-      return "Uri";
     case kHttpWarning:
       return "Warning";
     case kHttpWwwAuthenticate:
       return "WWW-Authenticate";
     case kHttpVia:
       return "Via";
+    case kHttpStrictTransportSecurity:
+      return "Strict-Transport-Security";
+    case kHttpXFrameOptions:
+      return "X-Frame-Options";
+    case kHttpXContentTypeOptions:
+      return "X-Content-Type-Options";
+    case kHttpAltSvc:
+      return "Alt-Svc";
+    case kHttpReferrerPolicy:
+      return "Referrer-Policy";
+    case kHttpXXssProtection:
+      return "X-XSS-Protection";
+    case kHttpAcceptRanges:
+      return "Accept-Ranges";
+    case kHttpSetCookie:
+      return "Set-Cookie";
+    case kHttpSecChUa:
+      return "Sec-CH-UA";
+    case kHttpSecChUaMobile:
+      return "Sec-CH-UA-Mobile";
+    case kHttpSecFetchSite:
+      return "Sec-Fetch-Site";
+    case kHttpSecFetchMode:
+      return "Sec-Fetch-Mode";
+    case kHttpSecFetchUser:
+      return "Sec-Fetch-User";
+    case kHttpSecFetchDest:
+      return "Sec-Fetch-Dest";
+    case kHttpCfRay:
+      return "CF-RAY";
+    case kHttpCfVisitor:
+      return "CF-Visitor";
+    case kHttpCfConnectingIp:
+      return "CF-Connecting-IP";
+    case kHttpCfIpcountry:
+      return "CF-IPCountry";
+    case kHttpCdnLoop:
+      return "CDN-Loop";
+    case kHttpSecChUaPlatform:
+      return "Sec-CH-UA-Platform";
     default:
       return NULL;
   }

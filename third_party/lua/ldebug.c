@@ -1,18 +1,33 @@
-/*
-** $Id: ldebug.c $
-** Debug Interface
-** See Copyright Notice in lua.h
-*/
-
+/*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
+╚──────────────────────────────────────────────────────────────────────────────╝
+│                                                                              │
+│  Lua                                                                         │
+│  Copyright © 2004-2021 Lua.org, PUC-Rio.                                     │
+│                                                                              │
+│  Permission is hereby granted, free of charge, to any person obtaining       │
+│  a copy of this software and associated documentation files (the             │
+│  "Software"), to deal in the Software without restriction, including         │
+│  without limitation the rights to use, copy, modify, merge, publish,         │
+│  distribute, sublicense, and/or sell copies of the Software, and to          │
+│  permit persons to whom the Software is furnished to do so, subject to       │
+│  the following conditions:                                                   │
+│                                                                              │
+│  The above copyright notice and this permission notice shall be              │
+│  included in all copies or substantial portions of the Software.             │
+│                                                                              │
+│  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,             │
+│  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF          │
+│  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.      │
+│  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY        │
+│  CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,        │
+│  TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE           │
+│  SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                      │
+│                                                                              │
+╚─────────────────────────────────────────────────────────────────────────────*/
 #define ldebug_c
 #define LUA_CORE
-
-#include "third_party/lua/lprefix.h"
-
-
-
-#include "third_party/lua/lua.h"
-
+#include "libc/str/str.h"
 #include "third_party/lua/lapi.h"
 #include "third_party/lua/lcode.h"
 #include "third_party/lua/ldebug.h"
@@ -20,12 +35,18 @@
 #include "third_party/lua/lfunc.h"
 #include "third_party/lua/lobject.h"
 #include "third_party/lua/lopcodes.h"
+#include "third_party/lua/lprefix.h"
 #include "third_party/lua/lstate.h"
 #include "third_party/lua/lstring.h"
 #include "third_party/lua/ltable.h"
 #include "third_party/lua/ltm.h"
+#include "third_party/lua/lua.h"
 #include "third_party/lua/lvm.h"
 
+asm(".ident\t\"\\n\\n\
+Lua 5.4.3 (MIT License)\\n\
+Copyright 1994–2021 Lua.org, PUC-Rio.\"");
+asm(".include \"libc/disclaimer.inc\"");
 
 
 #define noLuaClosure(f)		((f) == NULL || (f)->c.tt == LUA_VCCL)
@@ -47,6 +68,8 @@ static int currentpc (CallInfo *ci) {
 ** an integer division gets the right place. When the source file has
 ** large sequences of empty/comment lines, it may need extra entries,
 ** so the original estimate needs a correction.
+** If the original estimate is -1, the initial 'if' ensures that the
+** 'while' will run at least once.
 ** The assertion that the estimate is a lower bound for the correct base
 ** is valid as long as the debug info has been generated with the same
 ** value for MAXIWTHABS or smaller. (Previous releases use a little
@@ -60,7 +83,8 @@ static int getbaseline (const Proto *f, int pc, int *basepc) {
   else {
     int i = cast_uint(pc) / MAXIWTHABS - 1;  /* get an estimate */
     /* estimate must be a lower bond of the correct base */
-    lua_assert(i < f->sizeabslineinfo && f->abslineinfo[i].pc <= pc);
+    lua_assert(i < 0 ||
+              (i < f->sizeabslineinfo && f->abslineinfo[i].pc <= pc));
     while (i + 1 < f->sizeabslineinfo && pc >= f->abslineinfo[i + 1].pc)
       i++;  /* low estimate; adjust it */
     *basepc = f->abslineinfo[i].pc;
@@ -635,14 +659,18 @@ static const char *funcnamefromcode (lua_State *L, CallInfo *ci,
 
 
 /*
-** The subtraction of two potentially unrelated pointers is
-** not ISO C, but it should not crash a program; the subsequent
-** checks are ISO C and ensure a correct result.
+** Check whether pointer 'o' points to some value in the stack
+** frame of the current function. Because 'o' may not point to a
+** value in this stack, we cannot compare it with the region
+** boundaries (undefined behaviour in ISO C).
 */
 static int isinstack (CallInfo *ci, const TValue *o) {
-  StkId base = ci->func + 1;
-  ptrdiff_t i = cast(StkId, o) - base;
-  return (0 <= i && i < (ci->top - base) && s2v(base + i) == o);
+  StkId pos;
+  for (pos = ci->func + 1; pos < ci->top; pos++) {
+    if (o == s2v(pos))
+      return 1;
+  }
+  return 0;  /* not found */
 }
 
 
@@ -723,7 +751,7 @@ l_noret luaG_opinterror (lua_State *L, const TValue *p1,
 */
 l_noret luaG_tointerror (lua_State *L, const TValue *p1, const TValue *p2) {
   lua_Integer temp;
-  if (!tointegerns(p1, &temp))
+  if (!luaV_tointegerns(p1, &temp, LUA_FLOORN2I))
     p2 = p1;
   luaG_runerror(L, "number%s has no integer representation", varinfo(L, p2));
 }

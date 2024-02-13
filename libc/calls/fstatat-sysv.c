@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,17 +16,27 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/calls/internal.h"
+#include "libc/calls/struct/metastat.internal.h"
+#include "libc/calls/struct/stat.internal.h"
+#include "libc/calls/syscall-sysv.internal.h"
 
 /**
- * Supports stat(), lstat(), fstatat(), etc. implementations.
+ * Performs fstatat() on System Five.
  * @asyncsignalsafe
  */
-int32_t sys_fstatat(int32_t dirfd, const char *pathname, struct stat *st,
+int32_t sys_fstatat(int32_t dirfd, const char *path, struct stat *st,
                     int32_t flags) {
-  int32_t rc;
-  if ((rc = __sys_fstatat(dirfd, pathname, st, flags)) != -1) {
-    __stat2linux(st);
+  void *p;
+  union metastat ms;
+  if (st) {
+    p = &ms;
+  } else {
+    p = 0;
   }
-  return rc;
+  if (__sys_fstatat(dirfd, path, p, flags) != -1) {
+    __stat2cosmo(st, &ms);
+    return 0;
+  } else {
+    return -1;
+  }
 }

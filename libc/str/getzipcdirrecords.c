@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2021 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,13 +16,13 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/zip.h"
+#include "libc/zip.internal.h"
 
 /**
  * Returns number of records in zip central directory.
  */
 uint64_t GetZipCdirRecords(const uint8_t *eocd) {
-  if (READ32LE(eocd) == kZipCdir64HdrMagic) {
+  if (ZIP_READ32(eocd) == kZipCdir64HdrMagic) {
     return ZIP_CDIR64_RECORDS(eocd);
   } else {
     return ZIP_CDIR_RECORDS(eocd);

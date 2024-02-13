@@ -1,9 +1,3 @@
-/*
-** $Id: ldo.h $
-** Stack and Call structure of Lua
-** See Copyright Notice in lua.h
-*/
-
 #ifndef ldo_h
 #define ldo_h
 
@@ -11,7 +5,6 @@
 #include "third_party/lua/lstate.h"
 #include "third_party/lua/lzio.h"
 
-/* clang-format off */
 
 /*
 ** Macro to check stack size and grow stack if needed.  Parameters
@@ -23,7 +16,7 @@
 ** at every check.
 */
 #define luaD_checkstackaux(L,n,pre,pos)  \
-	if (L->stack_last - L->top <= (n)) \
+	if (l_unlikely(L->stack_last - L->top <= (n))) \
 	  { pre; luaD_growstack(L, n, 1); pos; } \
         else { condmovestack(L,pre,pos); }
 

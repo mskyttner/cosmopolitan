@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,11 +16,11 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/nexgen32e/bsr.h"
+#include "libc/intrin/bsr.h"
 #include "libc/str/str.h"
 #include "libc/testlib/testlib.h"
 
-static unsigned Bsr(unsigned x) {
+static unsigned _Bsr(unsigned x) {
   static const char kDebruijn[32] = {
       0, 9,  1,  10, 13, 21, 2,  29, 11, 14, 16, 18, 22, 25, 3, 30,
       8, 12, 20, 28, 15, 17, 24, 7,  19, 27, 23, 6,  26, 5,  4, 31,
@@ -35,6 +35,8 @@ static unsigned Bsr(unsigned x) {
   return kDebruijn[x];
 }
 
-TEST(bsr, test) {
-  ASSERT_EQ(bsr(0xffffffff), Bsr(0xffffffff));
+TEST(_bsr, test) {
+  for (int i = 1; i < 1000; ++i) {
+    ASSERT_EQ(_bsr(i), _Bsr(i));
+  }
 }

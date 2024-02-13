@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=8 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=8 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,7 +16,6 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/calls/calls.h"
 #include "libc/stdio/stdio.h"
 
 /**
@@ -26,13 +25,11 @@
  * @return c as unsigned char if written or -1 w/ errno
  */
 int fputc(int c, FILE *f) {
-  unsigned char b;
-  if (c != '\n' && f->beg < f->size && f->bufmode != _IONBF) {
-    f->buf[f->beg++] = c;
-    return c & 0xff;
-  } else {
-    b = c;
-    if (!fwrite(&b, 1, 1, f)) return -1;
-    return b;
-  }
+  int rc;
+  flockfile(f);
+  rc = fputc_unlocked(c, f);
+  funlockfile(f);
+  return rc;
 }
+
+__strong_reference(fputc, putc);

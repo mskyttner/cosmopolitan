@@ -51,12 +51,13 @@
            ;; lea x@tlsgd(,%rbx,1),%rdi
            ;; call __tls_get_addr@plt
            "tlsgd"
-           "tlsld" 
+           "tlsld"
            "dtpmod"
            "dtpoff"
            "gottpoff"
            "function"
            "object"
+           "notype"
            "got"
            "size"
            "gotoff"
@@ -66,7 +67,8 @@
            "progbits"
            "nobits"
            "init_array"
-           "fini_array")])
+           "fini_array"
+           "gnu_indirect_function")])
     "\\>"])
   "GNU Assembler section, relocation, macro param qualifiers.")
 
@@ -108,10 +110,13 @@
        "protip"
        "nxbitsafe"
        "vforksafe"
+       "threadsafe"
        "preinitsafe"
        "asyncsignalsafe"
        "notasyncsignalsafe"
        "isa"
+       "norestart"
+       "mayalias"
        "sideffect")
       "\\>"]))
   "Assembly docstring highlighting in Google Java Style.")
@@ -208,25 +213,7 @@
 
    cpp-font-lock-keywords
 
-   `(;; GNU-Style Assembler Comment (Ltd. 80x86 &c.)
-     ;;
-     ;;   - Valid
-     ;;
-     ;;     * #heyho
-     ;;     * # heyho
-     ;;     * .org . #heyho
-     ;;     * .org . ####euhhcue
-     ;;     * .org .# ###euhhcue
-     ;;
-     ;;   - Ignored
-     ;;
-     ;;     * #if 0
-     ;;     * #endif
-     ;;     * .ascii "#heyho"
-     ;;
-     ("\\(#.*\\)$" 1 font-lock-comment-face)
-
-     ("'\\(\\\\?.\\)\\>" 1 font-lock-constant-face)
+   `(("'\\(\\\\?.\\)\\>" 1 font-lock-constant-face)
 
      ;; Register Value
      ;;
@@ -289,7 +276,7 @@
       (1 font-lock-constant-face)
       (2 font-lock-constant-face))
 
-     ;; Bultin Constants
+     ;; Builtin Constants
      ;;
      ;;   - Valid
      ;;
@@ -352,10 +339,7 @@
   (add-hook 'asm-mode-hook 'cosmo-asm-supplemental-hook)
   (setq asm-font-lock-keywords cosmo-asm-font-lock-keywords))
 
-;; Make -*-unix-assembly-*- mode line work correctly.
-;; TODO(jart): Would be nice to use GitHub's name instead of changing asm-mode.
-(defun unix-assembly-mode ()
-  (interactive)
-  (asm-mode))
+;; Make -*-unix-assembly-*- mode line work correctly like GitHub.
+(define-derived-mode unix-assembly-mode asm-mode "UNIX Assembly")
 
 (provide 'cosmo-asm-mode)

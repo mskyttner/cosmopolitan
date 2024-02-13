@@ -80,6 +80,7 @@
            "uint_least8_t"
            "uintptr_t"
            "ssize_t"
+           "time_t"
            "long long int"
            "unsigned long long"
            "int8_t"
@@ -165,10 +166,24 @@
         (cosmo
          '("int_least128_t"
            "int_fast128_t"
+           "mbedtls_mpi_sint"
+           "mbedtls_mpi_uint"
            "bool32"
            "int128_t"
            "uint128_t"
            "axdx_t"))
+
+        (linux
+         '("i8"
+           "u8"
+           "i16"
+           "u16"
+           "i32"
+           "u32"
+           "i64"
+           "u64"
+           "off_t"
+           "rlim_t"))
 
         (x86intrin
          '("__v8hu"
@@ -216,6 +231,7 @@
                                 gnu
                                 cxx17
                                 cosmo
+                                linux
                                 x86intrin))
             "\\_>")))
 

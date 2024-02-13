@@ -1,12 +1,32 @@
-/*
-** $Id: lfunc.c $
-** Auxiliary functions to manipulate prototypes and closures
-** See Copyright Notice in lua.h
-*/
-
+/*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
+╚──────────────────────────────────────────────────────────────────────────────╝
+│                                                                              │
+│  Lua                                                                         │
+│  Copyright © 2004-2021 Lua.org, PUC-Rio.                                     │
+│                                                                              │
+│  Permission is hereby granted, free of charge, to any person obtaining       │
+│  a copy of this software and associated documentation files (the             │
+│  "Software"), to deal in the Software without restriction, including         │
+│  without limitation the rights to use, copy, modify, merge, publish,         │
+│  distribute, sublicense, and/or sell copies of the Software, and to          │
+│  permit persons to whom the Software is furnished to do so, subject to       │
+│  the following conditions:                                                   │
+│                                                                              │
+│  The above copyright notice and this permission notice shall be              │
+│  included in all copies or substantial portions of the Software.             │
+│                                                                              │
+│  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,             │
+│  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF          │
+│  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.      │
+│  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY        │
+│  CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,        │
+│  TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE           │
+│  SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                      │
+│                                                                              │
+╚─────────────────────────────────────────────────────────────────────────────*/
 #define lfunc_c
 #define LUA_CORE
-
 #include "third_party/lua/ldebug.h"
 #include "third_party/lua/ldo.h"
 #include "third_party/lua/lfunc.h"
@@ -15,9 +35,14 @@
 #include "third_party/lua/lobject.h"
 #include "third_party/lua/lprefix.h"
 #include "third_party/lua/lstate.h"
+#include "third_party/lua/ltm.h"
 #include "third_party/lua/lua.h"
 
-/* clang-format off */
+asm(".ident\t\"\\n\\n\
+Lua 5.4.3 (MIT License)\\n\
+Copyright 1994–2021 Lua.org, PUC-Rio.\"");
+asm(".include \"libc/disclaimer.inc\"");
+
 
 CClosure *luaF_newCclosure (lua_State *L, int nupvals) {
   GCObject *o = luaC_newobj(L, LUA_VCCL, sizeCclosure(nupvals));
@@ -150,6 +175,15 @@ static void prepcallclosemth (lua_State *L, StkId level, int status, int yy) {
 
 
 /*
+** Maximum value for deltas in 'tbclist', dependent on the type
+** of delta. (This macro assumes that an 'L' is in scope where it
+** is used.)
+*/
+#define MAXDELTA  \
+	((256ul << ((sizeof(L->stack->tbclist.delta) - 1) * 8)) - 1)
+
+
+/*
 ** Insert a variable in the list of to-be-closed variables.
 */
 void luaF_newtbcupval (lua_State *L, StkId level) {
@@ -157,13 +191,11 @@ void luaF_newtbcupval (lua_State *L, StkId level) {
   if (l_isfalse(s2v(level)))
     return;  /* false doesn't need to be closed */
   checkclosemth(L, level);  /* value must have a close method */
-  while (level - L->tbclist > USHRT_MAX) {  /* is delta too large? */
-    L->tbclist += USHRT_MAX;  /* create a dummy node at maximum delta */
-    L->tbclist->tbclist.delta = USHRT_MAX;
-    L->tbclist->tbclist.isdummy = 1;
+  while (cast_uint(level - L->tbclist) > MAXDELTA) {
+    L->tbclist += MAXDELTA;  /* create a dummy node at maximum delta */
+    L->tbclist->tbclist.delta = 0;
   }
-  level->tbclist.delta = level - L->tbclist;
-  level->tbclist.isdummy = 0;
+  level->tbclist.delta = cast(unsigned short, level - L->tbclist);
   L->tbclist = level;
 }
 
@@ -197,6 +229,19 @@ void luaF_closeupval (lua_State *L, StkId level) {
 
 
 /*
+** Remove firt element from the tbclist plus its dummy nodes.
+*/
+static void poptbclist (lua_State *L) {
+  StkId tbc = L->tbclist;
+  lua_assert(tbc->tbclist.delta > 0);  /* first element cannot be dummy */
+  tbc -= tbc->tbclist.delta;
+  while (tbc > L->stack && tbc->tbclist.delta == 0)
+    tbc -= MAXDELTA;  /* remove dummy nodes */
+  L->tbclist = tbc;
+}
+
+
+/*
 ** Close all upvalues and to-be-closed variables up to the given stack
 ** level.
 */
@@ -205,11 +250,9 @@ void luaF_close (lua_State *L, StkId level, int status, int yy) {
   luaF_closeupval(L, level);  /* first, close the upvalues */
   while (L->tbclist >= level) {  /* traverse tbc's down to that level */
     StkId tbc = L->tbclist;  /* get variable index */
-    L->tbclist -= tbc->tbclist.delta;  /* remove it from list */
-    if (!tbc->tbclist.isdummy) {  /* not a dummy entry? */
-      prepcallclosemth(L, tbc, status, yy);  /* close variable */
-      level = restorestack(L, levelrel);
-    }
+    poptbclist(L);  /* remove it from list */
+    prepcallclosemth(L, tbc, status, yy);  /* close variable */
+    level = restorestack(L, levelrel);
   }
 }
 

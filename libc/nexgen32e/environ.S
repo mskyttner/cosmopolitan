@@ -1,5 +1,5 @@
 /*-*- mode:unix-assembly; indent-tabs-mode:t; tab-width:8; coding:utf-8     -*-│
-│vi: set et ft=asm ts=8 sw=8 fenc=utf-8                                     :vi│
+│ vi: set noet ft=asm ts=8 sw=8 fenc=utf-8                                 :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -21,7 +21,7 @@
 
 //	Environment variable pointer list.
 	.bss
-	.align	8
+	.balign	8
 environ:
 	.quad	0
 	.endobj	environ,globl
@@ -30,4 +30,3 @@ environ:
 	.init.start 300,_init_environ
 	mov	%r14,environ(%rip)
 	.init.end 300,_init_environ
-	.source	__FILE__

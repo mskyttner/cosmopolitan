@@ -1,12 +1,33 @@
-/*
-** $Id: lvm.c $
-** Lua virtual machine
-** See Copyright Notice in lua.h
-*/
-
+/*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
+╚──────────────────────────────────────────────────────────────────────────────╝
+│                                                                              │
+│  Lua                                                                         │
+│  Copyright © 2004-2021 Lua.org, PUC-Rio.                                     │
+│                                                                              │
+│  Permission is hereby granted, free of charge, to any person obtaining       │
+│  a copy of this software and associated documentation files (the             │
+│  "Software"), to deal in the Software without restriction, including         │
+│  without limitation the rights to use, copy, modify, merge, publish,         │
+│  distribute, sublicense, and/or sell copies of the Software, and to          │
+│  permit persons to whom the Software is furnished to do so, subject to       │
+│  the following conditions:                                                   │
+│                                                                              │
+│  The above copyright notice and this permission notice shall be              │
+│  included in all copies or substantial portions of the Software.             │
+│                                                                              │
+│  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,             │
+│  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF          │
+│  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.      │
+│  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY        │
+│  CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,        │
+│  TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE           │
+│  SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                      │
+│                                                                              │
+╚─────────────────────────────────────────────────────────────────────────────*/
 #define lvm_c
 #define LUA_CORE
-
+#include "libc/str/str.h"
 #include "third_party/lua/ldebug.h"
 #include "third_party/lua/ldo.h"
 #include "third_party/lua/lfunc.h"
@@ -21,7 +42,11 @@
 #include "third_party/lua/lua.h"
 #include "third_party/lua/lvm.h"
 
-/* clang-format off */
+asm(".ident\t\"\\n\\n\
+Lua 5.4.3 (MIT License)\\n\
+Copyright 1994–2021 Lua.org, PUC-Rio.\"");
+asm(".include \"libc/disclaimer.inc\"");
+
 
 /*
 ** By default, use jump tables in the main interpreter loop on gcc
@@ -227,11 +252,11 @@ static int forprep (lua_State *L, StkId ra) {
   }
   else {  /* try making all values floats */
     lua_Number init; lua_Number limit; lua_Number step;
-    if (unlikely(!tonumber(plimit, &limit)))
+    if (l_unlikely(!tonumber(plimit, &limit)))
       luaG_forerror(L, plimit, "limit");
-    if (unlikely(!tonumber(pstep, &step)))
+    if (l_unlikely(!tonumber(pstep, &step)))
       luaG_forerror(L, pstep, "step");
-    if (unlikely(!tonumber(pinit, &init)))
+    if (l_unlikely(!tonumber(pinit, &init)))
       luaG_forerror(L, pinit, "initial value");
     if (step == 0)
       luaG_runerror(L, "'for' step is zero");
@@ -284,7 +309,7 @@ void luaV_finishget (lua_State *L, const TValue *t, TValue *key, StkId val,
     if (slot == NULL) {  /* 't' is not a table? */
       lua_assert(!ttistable(t));
       tm = luaT_gettmbyobj(L, t, TM_INDEX);
-      if (unlikely(notm(tm)))
+      if (l_unlikely(notm(tm)))
         luaG_typeerror(L, t, "index");  /* no metamethod */
       /* else will try the metamethod */
     }
@@ -338,7 +363,7 @@ void luaV_finishset (lua_State *L, const TValue *t, TValue *key,
     }
     else {  /* not a table; check metamethod */
       tm = luaT_gettmbyobj(L, t, TM_NEWINDEX);
-      if (unlikely(notm(tm)))
+      if (l_unlikely(notm(tm)))
         luaG_typeerror(L, t, "index");
     }
     /* try the metamethod */
@@ -560,8 +585,13 @@ int luaV_equalobj (lua_State *L, const TValue *t1, const TValue *t2) {
     if (ttype(t1) != ttype(t2) || ttype(t1) != LUA_TNUMBER)
       return 0;  /* only numbers can be equal with different variants */
     else {  /* two numbers with different variants */
-      lua_Integer i1, i2;  /* compare them as integers */
-      return (tointegerns(t1, &i1) && tointegerns(t2, &i2) && i1 == i2);
+      /* One of them is an integer. If the other does not have an
+         integer value, they cannot be equal; otherwise, compare their
+         integer values. */
+      lua_Integer i1, i2;
+      return (luaV_tointegerns(t1, &i1, F2Ieq) &&
+              luaV_tointegerns(t2, &i2, F2Ieq) &&
+              i1 == i2);
     }
   }
   /* values have same type and same variant */
@@ -643,7 +673,7 @@ void luaV_concat (lua_State *L, int total) {
       /* collect total length and number of strings */
       for (n = 1; n < total && tostring(L, s2v(top - n - 1)); n++) {
         size_t l = vslen(s2v(top - n - 1));
-        if (unlikely(l >= (MAX_SIZE/sizeof(char)) - tl))
+        if (l_unlikely(l >= (MAX_SIZE/sizeof(char)) - tl))
           luaG_runerror(L, "string length overflow");
         tl += l;
       }
@@ -687,7 +717,7 @@ void luaV_objlen (lua_State *L, StkId ra, const TValue *rb) {
     }
     default: {  /* try metamethod */
       tm = luaT_gettmbyobj(L, rb, TM_LEN);
-      if (unlikely(notm(tm)))  /* no metamethod? */
+      if (l_unlikely(notm(tm)))  /* no metamethod? */
         luaG_typeerror(L, rb, "get length of");
       break;
     }
@@ -703,7 +733,7 @@ void luaV_objlen (lua_State *L, StkId ra, const TValue *rb) {
 ** otherwise 'floor(q) == trunc(q) - 1'.
 */
 lua_Integer luaV_idiv (lua_State *L, lua_Integer m, lua_Integer n) {
-  if (unlikely(l_castS2U(n) + 1u <= 1u)) {  /* special cases: -1 or 0 */
+  if (l_unlikely(l_castS2U(n) + 1u <= 1u)) {  /* special cases: -1 or 0 */
     if (n == 0)
       luaG_runerror(L, "attempt to divide by zero");
     return intop(-, 0, m);   /* n==-1; avoid overflow with 0x80000...//-1 */
@@ -723,7 +753,7 @@ lua_Integer luaV_idiv (lua_State *L, lua_Integer m, lua_Integer n) {
 ** about luaV_idiv.)
 */
 lua_Integer luaV_mod (lua_State *L, lua_Integer m, lua_Integer n) {
-  if (unlikely(l_castS2U(n) + 1u <= 1u)) {  /* special cases: -1 or 0 */
+  if (l_unlikely(l_castS2U(n) + 1u <= 1u)) {  /* special cases: -1 or 0 */
     if (n == 0)
       luaG_runerror(L, "attempt to perform 'n%%0'");
     return 0;   /* m % -1 == 0; avoid overflow with 0x80000...%-1 */
@@ -913,7 +943,7 @@ void luaV_finishOp (lua_State *L) {
 */
 #define op_arithfK(L,fop) {  \
   TValue *v1 = vRB(i);  \
-  TValue *v2 = KC(i);  \
+  TValue *v2 = KC(i); lua_assert(ttisnumber(v2));  \
   op_arithf_aux(L, v1, v2, fop); }
 
 
@@ -942,7 +972,7 @@ void luaV_finishOp (lua_State *L) {
 */
 #define op_arithK(L,iop,fop) {  \
   TValue *v1 = vRB(i);  \
-  TValue *v2 = KC(i);  \
+  TValue *v2 = KC(i); lua_assert(ttisnumber(v2));  \
   op_arith_aux(L, v1, v2, iop, fop); }
 
 
@@ -1041,7 +1071,8 @@ void luaV_finishOp (lua_State *L) {
 #define updatebase(ci)	(base = ci->func + 1)
 
 
-#define updatestack(ci) { if (trap) { updatebase(ci); ra = RA(i); } }
+#define updatestack(ci)  \
+	{ if (l_unlikely(trap)) { updatebase(ci); ra = RA(i); } }
 
 
 /*
@@ -1099,7 +1130,7 @@ void luaV_finishOp (lua_State *L) {
 
 /* fetch an instruction and prepare its execution */
 #define vmfetch()	{ \
-  if (trap) {  /* stack reallocation or hooks? */ \
+  if (l_unlikely(trap)) {  /* stack reallocation or hooks? */ \
     trap = luaG_traceexec(L, pc);  /* handle hooks */ \
     updatebase(ci);  /* correct stack */ \
   } \
@@ -1127,7 +1158,7 @@ void luaV_execute (lua_State *L, CallInfo *ci) {
   cl = clLvalue(s2v(ci->func));
   k = cl->p->k;
   pc = ci->u.l.savedpc;
-  if (trap) {
+  if (l_unlikely(trap)) {
     if (pc == cl->p->code) {  /* first instruction (not resuming)? */
       if (cl->p->is_vararg)
         trap = 0;  /* hooks will start after VARARGPREP instruction */
@@ -1670,23 +1701,23 @@ void luaV_execute (lua_State *L, CallInfo *ci) {
         goto ret;
       }
       vmcase(OP_RETURN0) {
-        if (L->hookmask) {
+        if (l_unlikely(L->hookmask)) {
           L->top = ra;
           savepc(ci);
           luaD_poscall(L, ci, 0);  /* no hurry... */
           trap = 1;
         }
         else {  /* do the 'poscall' here */
-          int nres = ci->nresults;
+          int nres;
           L->ci = ci->previous;  /* back to caller */
           L->top = base - 1;
-          while (nres-- > 0)
+          for (nres = ci->nresults; l_unlikely(nres > 0); nres--)
             setnilvalue(s2v(L->top++));  /* all results are nil */
         }
         goto ret;
       }
       vmcase(OP_RETURN1) {
-        if (L->hookmask) {
+        if (l_unlikely(L->hookmask)) {
           L->top = ra + 1;
           savepc(ci);
           luaD_poscall(L, ci, 1);  /* no hurry... */
@@ -1700,8 +1731,8 @@ void luaV_execute (lua_State *L, CallInfo *ci) {
           else {
             setobjs2s(L, base - 1, ra);  /* at least this result */
             L->top = base;
-            while (--nres > 0)  /* complete missing results */
-              setnilvalue(s2v(L->top++));
+            for (; l_unlikely(nres > 1); nres--)
+              setnilvalue(s2v(L->top++));  /* complete missing results */
           }
         }
        ret:  /* return from a Lua function */
@@ -1804,7 +1835,7 @@ void luaV_execute (lua_State *L, CallInfo *ci) {
       }
       vmcase(OP_VARARGPREP) {
         ProtectNT(luaT_adjustvarargs(L, GETARG_A(i), ci, cl->p));
-        if (trap) {
+        if (l_unlikely(trap)) {  /* previous "Protect" updated trap */
           luaD_hookcall(L, ci);
           L->oldpc = 1;  /* next opcode will be seen as a "new" line */
         }

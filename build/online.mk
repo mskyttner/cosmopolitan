@@ -1,5 +1,5 @@
 #-*-mode:makefile-gmake;indent-tabs-mode:t;tab-width:8;coding:utf-8-*-┐
-#───vi: set et ft=make ts=8 tw=8 fenc=utf-8 :vi───────────────────────┘
+#── vi: set et ft=make ts=8 sw=8 fenc=utf-8 :vi ──────────────────────┘
 #
 # SYNOPSIS
 #
@@ -23,8 +23,13 @@
 #   - tool/build/runitd.c
 
 .PRECIOUS: o/$(MODE)/%.com.ok
+o/$(MODE)/%.com.ok: private .PLEDGE = stdio rpath wpath cpath proc fattr inet dns
+o/$(MODE)/%.com.ok: private .UNVEIL += r:/etc/resolv.conf
 o/$(MODE)/%.com.ok:				\
 		o/$(MODE)/tool/build/runit.com	\
 		o/$(MODE)/tool/build/runitd.com	\
 		o/$(MODE)/%.com
-	@$(COMPILE) -ATEST -tT$@ $^ $(HOSTS)
+	@$(COMPILE) -wATEST -tT$@ $^ $(HOSTS)
+
+.PHONY:
+o/tiny/tool/build/runit.com:

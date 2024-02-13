@@ -1,18 +1,42 @@
-/*
-** $Id: lcorolib.c $
-** Coroutine Library
-** See Copyright Notice in lua.h
-*/
-
+/*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
+╚──────────────────────────────────────────────────────────────────────────────╝
+│                                                                              │
+│  Lua                                                                         │
+│  Copyright © 2004-2021 Lua.org, PUC-Rio.                                     │
+│                                                                              │
+│  Permission is hereby granted, free of charge, to any person obtaining       │
+│  a copy of this software and associated documentation files (the             │
+│  "Software"), to deal in the Software without restriction, including         │
+│  without limitation the rights to use, copy, modify, merge, publish,         │
+│  distribute, sublicense, and/or sell copies of the Software, and to          │
+│  permit persons to whom the Software is furnished to do so, subject to       │
+│  the following conditions:                                                   │
+│                                                                              │
+│  The above copyright notice and this permission notice shall be              │
+│  included in all copies or substantial portions of the Software.             │
+│                                                                              │
+│  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,             │
+│  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF          │
+│  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.      │
+│  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY        │
+│  CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,        │
+│  TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE           │
+│  SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                      │
+│                                                                              │
+╚─────────────────────────────────────────────────────────────────────────────*/
 #define lcorolib_c
 #define LUA_LIB
-
 #include "third_party/lua/lauxlib.h"
 #include "third_party/lua/lprefix.h"
 #include "third_party/lua/lua.h"
 #include "third_party/lua/lualib.h"
 
-/* clang-format off */
+asm(".ident\t\"\\n\\n\
+Lua 5.4.3 (MIT License)\\n\
+Copyright 1994–2021 Lua.org, PUC-Rio.\"");
+asm(".include \"libc/disclaimer.inc\"");
+
 
 static lua_State *getco (lua_State *L) {
   lua_State *co = lua_tothread(L, 1);
@@ -27,14 +51,14 @@ static lua_State *getco (lua_State *L) {
 */
 static int auxresume (lua_State *L, lua_State *co, int narg) {
   int status, nres;
-  if (!lua_checkstack(co, narg)) {
+  if (l_unlikely(!lua_checkstack(co, narg))) {
     lua_pushliteral(L, "too many arguments to resume");
     return -1;  /* error flag */
   }
   lua_xmove(L, co, narg);
   status = lua_resume(co, L, narg, &nres);
-  if (status == LUA_OK || status == LUA_YIELD) {
-    if (!lua_checkstack(L, nres + 1)) {
+  if (l_likely(status == LUA_OK || status == LUA_YIELD)) {
+    if (l_unlikely(!lua_checkstack(L, nres + 1))) {
       lua_pop(co, nres);  /* remove results anyway */
       lua_pushliteral(L, "too many results to resume");
       return -1;  /* error flag */
@@ -53,7 +77,7 @@ static int luaB_coresume (lua_State *L) {
   lua_State *co = getco(L);
   int r;
   r = auxresume(L, co, lua_gettop(L) - 1);
-  if (r < 0) {
+  if (l_unlikely(r < 0)) {
     lua_pushboolean(L, 0);
     lua_insert(L, -2);
     return 2;  /* return false + error message */
@@ -69,7 +93,7 @@ static int luaB_coresume (lua_State *L) {
 static int luaB_auxwrap (lua_State *L) {
   lua_State *co = lua_tothread(L, lua_upvalueindex(1));
   int r = auxresume(L, co, lua_gettop(L));
-  if (r < 0) {  /* error? */
+  if (l_unlikely(r < 0)) {  /* error? */
     int stat = lua_status(co);
     if (stat != LUA_OK && stat != LUA_YIELD) {  /* error in the coroutine? */
       stat = lua_resetthread(co);  /* close its tbc variables */

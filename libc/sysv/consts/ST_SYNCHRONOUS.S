@@ -1,2 +1,2 @@
 #include "libc/sysv/consts/syscon.internal.h"
-.syscon statvfs,ST_SYNCHRONOUS,0x10,0,0,0,0,0
+.syscon statfs,ST_SYNCHRONOUS,16,16,2,2,2,2,2,0

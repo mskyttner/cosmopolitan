@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2021 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -100,7 +100,7 @@ const char *GetHttpReason(int code) {
   l = 0;
   r = ARRAYLEN(kHttpReason) - 1;
   while (l <= r) {
-    m = (l + r) >> 1;
+    m = (l & r) + ((l ^ r) >> 1);  // floor((a+b)/2)
     if (kHttpReason[m].code < code) {
       l = m + 1;
     } else if (kHttpReason[m].code > code) {

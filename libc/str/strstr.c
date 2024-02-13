@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -17,6 +17,9 @@
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
 #include "libc/str/str.h"
+#include "libc/dce.h"
+
+typedef char xmm_t __attribute__((__vector_size__(16), __aligned__(16)));
 
 /**
  * Searches for substring.
@@ -24,26 +27,54 @@
  * @param haystack is the search area, as a NUL-terminated string
  * @param needle is the desired substring, also NUL-terminated
  * @return pointer to first substring within haystack, or NULL
+ * @note this implementation goes fast in practice but isn't hardened
+ *     against pathological cases, and therefore shouldn't be used on
+ *     untrustworthy data
  * @asyncsignalsafe
+ * @see strcasestr()
  * @see memmem()
  */
-char *strstr(const char *haystack, const char *needle) {
+__vex char *strstr(const char *haystack, const char *needle) {
+#if defined(__x86_64__) && !defined(__chibicc__)
   size_t i;
-  const char *p;
-  if (!needle[0]) return haystack;
-  if (haystack == needle) return haystack;
-  p = strchr(haystack, needle[0]);
-  if (!needle[1]) return p;
-  if (p) haystack = p;
-  /* TODO: make not quadratic */
+  unsigned k, m;
+  const xmm_t *p;
+  xmm_t v, n, z = {0};
+  if (haystack == needle || !*needle) return (char *)haystack;
+  n = (xmm_t){*needle, *needle, *needle, *needle, *needle, *needle,
+              *needle, *needle, *needle, *needle, *needle, *needle,
+              *needle, *needle, *needle, *needle};
   for (;;) {
-    for (i = 0;;) {
+    k = (uintptr_t)haystack & 15;
+    p = (const xmm_t *)((uintptr_t)haystack & -16);
+    v = *p;
+    m = __builtin_ia32_pmovmskb128((v == z) | (v == n));
+    m >>= k;
+    m <<= k;
+    while (!m) {
+      v = *++p;
+      m = __builtin_ia32_pmovmskb128((v == z) | (v == n));
+    }
+    haystack = (const char *)p + __builtin_ctzl(m);
+    for (i = 0;; ++i) {
       if (!needle[i]) return (/*unconst*/ char *)haystack;
       if (!haystack[i]) break;
       if (needle[i] != haystack[i]) break;
-      ++i;
     }
     if (!*haystack++) break;
   }
-  return NULL;
+  return 0;
+#else
+  size_t i;
+  if (haystack == needle || !*needle) return (void *)haystack;
+  for (;;) {
+    for (i = 0;; ++i) {
+      if (!needle[i]) return (/*unconst*/ char *)haystack;
+      if (!haystack[i]) break;
+      if (needle[i] != haystack[i]) break;
+    }
+    if (!*haystack++) break;
+  }
+  return 0;
+#endif
 }

@@ -1,7 +1,13 @@
+#include "third_party/chibicc/chibicc.h"
+#include "libc/calls/calls.h"
+#include "libc/calls/struct/sigaction.h"
 #include "libc/calls/struct/siginfo.h"
 #include "libc/calls/ucontext.h"
-#include "libc/x/x.h"
-#include "third_party/chibicc/chibicc.h"
+#include "libc/fmt/libgen.h"
+#include "libc/mem/gc.h"
+#include "libc/runtime/runtime.h"
+#include "libc/sysv/consts/sig.h"
+#include "libc/x/xasprintf.h"
 
 asm(".ident\t\"\\n\\n\
 chibicc (MIT/ISC License)\\n\
@@ -36,6 +42,7 @@ bool opt_verbose;
 static bool opt_A;
 static bool opt_E;
 static bool opt_J;
+static bool opt_P;
 static bool opt_M;
 static bool opt_MD;
 static bool opt_MMD;
@@ -60,19 +67,33 @@ static StringArray std_include_paths;
 char *base_file;
 static char *output_file;
 static StringArray input_paths;
-static char **tmpfiles;
+char **chibicc_tmpfiles;
 
-static void usage(int status) {
-  fprintf(stderr, "chibicc [ -o <path> ] <file>\n");
-  exit(status);
-}
-
-static void version(void) {
-  printf("\
+static const char kChibiccVersion[] = "\
 chibicc (cosmopolitan) 9.0.0\n\
 copyright 2019 rui ueyama\n\
-copyright 2020 justine alexandra roberts tunney\n");
-  exit(0);
+copyright 2020 justine alexandra roberts tunney\n";
+
+static void chibicc_version(void) {
+  xwrite(1, kChibiccVersion, sizeof(kChibiccVersion) - 1);
+  _Exit(0);
+}
+
+static void chibicc_usage(int status) {
+  char *p;
+  size_t n;
+  p = xslurp("/zip/third_party/chibicc/help.txt", &n);
+  __paginate(1, p);
+  _Exit(status);
+}
+
+void chibicc_cleanup(void) {
+  size_t i;
+  if (chibicc_tmpfiles && !opt_save_temps) {
+    for (i = 0; chibicc_tmpfiles[i]; i++) {
+      unlink(chibicc_tmpfiles[i]);
+    }
+  }
 }
 
 static bool take_arg(char *arg) {
@@ -94,6 +115,7 @@ static void add_default_include_paths(char *argv0) {
   /* strarray_push(&include_paths, buf); */
   // Add standard include paths.
   /* strarray_push(&include_paths, "."); */
+  strarray_push(&include_paths, "/zip/.c");
   // Keep a copy of the standard include paths for -MMD option.
   for (int i = 0; i < include_paths.len; i++) {
     strarray_push(&std_include_paths, include_paths.data[i]);
@@ -157,6 +179,10 @@ static void PrintMemoryUsage(void) {
           sizeof(Obj) * alloc_obj_count);
   fprintf(stderr, "allocated %,ld types (%,ld bytes)\n", alloc_type_count,
           sizeof(Type) * alloc_type_count);
+  fprintf(stderr, "chibicc hashmap hits %,ld\n", chibicc_hashmap_hits);
+  fprintf(stderr, "chibicc hashmap miss %,ld\n", chibicc_hashmap_miss);
+  fprintf(stderr, "as hashmap hits %,ld\n", as_hashmap_hits);
+  fprintf(stderr, "as hashmap miss %,ld\n", as_hashmap_miss);
 }
 
 static void strarray_push_comma(StringArray *a, char *s) {
@@ -173,20 +199,20 @@ static void parse_args(int argc, char **argv) {
   for (int i = 1; i < argc; i++) {
     if (take_arg(argv[i])) {
       if (!argv[++i]) {
-        usage(1);
+        chibicc_usage(1);
       }
     }
   }
-  StringArray idirafter = {};
+  StringArray idirafter = {0};
   for (int i = 1; i < argc; i++) {
     if (!strcmp(argv[i], "-###")) {
-      opt_hash_hash_hash = true;
+      opt_verbose = opt_hash_hash_hash = true;
     } else if (!strcmp(argv[i], "-cc1")) {
       opt_cc1 = true;
     } else if (!strcmp(argv[i], "--help")) {
-      usage(0);
+      chibicc_usage(0);
     } else if (!strcmp(argv[i], "--version")) {
-      version();
+      chibicc_version();
     } else if (!strcmp(argv[i], "-v")) {
       opt_verbose = true;
       atexit(PrintMemoryUsage);
@@ -202,6 +228,8 @@ static void parse_args(int argc, char **argv) {
       opt_common = false;
     } else if (!strcmp(argv[i], "-fno-builtin")) {
       opt_no_builtin = true;
+    } else if (!strcmp(argv[i], "-save-temps")) {
+      opt_save_temps = true;
     } else if (!strcmp(argv[i], "-c")) {
       opt_c = true;
     } else if (!strcmp(argv[i], "-E")) {
@@ -210,6 +238,8 @@ static void parse_args(int argc, char **argv) {
       opt_J = true;
     } else if (!strcmp(argv[i], "-A")) {
       opt_A = true;
+    } else if (!strcmp(argv[i], "-P")) {
+      opt_P = true;
     } else if (!strcmp(argv[i], "-I")) {
       strarray_push(&include_paths, argv[++i]);
     } else if (startswith(argv[i], "-I")) {
@@ -237,9 +267,9 @@ static void parse_args(int argc, char **argv) {
     } else if (!strncmp(argv[i], "-x", 2)) {
       opt_x = parse_opt_x(argv[i] + 2);
     } else if (startswith(argv[i], "-Wa")) {
-      strarray_push_comma(&as_extra_args, argv[i]);
+      strarray_push_comma(&as_extra_args, argv[i] + 3);
     } else if (startswith(argv[i], "-Wl")) {
-      strarray_push_comma(&ld_extra_args, argv[i]);
+      strarray_push_comma(&ld_extra_args, argv[i] + 3);
     } else if (!strcmp(argv[i], "-Xassembler")) {
       strarray_push(&as_extra_args, argv[++i]);
     } else if (!strcmp(argv[i], "-Xlinker")) {
@@ -349,23 +379,15 @@ static char *replace_extn(char *tmpl, char *extn) {
   return buf;
 }
 
-static void cleanup(void) {
-  if (tmpfiles && !opt_save_temps) {
-    for (int i = 0; tmpfiles[i]; i++) {
-      unlink(tmpfiles[i]);
-    }
-  }
-}
-
 static char *create_tmpfile(void) {
-  char *path = xjoinpaths(kTmpPath, "chibicc-XXXXXX");
+  char *path = xjoinpaths(__get_tmpdir(), "chibicc-XXXXXX");
   int fd = mkstemp(path);
-  if (fd == -1) error("mkstemp failed: %s", strerror(errno));
+  if (fd == -1) error("%s: mkstemp failed: %s", path, strerror(errno));
   close(fd);
   static int len = 2;
-  tmpfiles = realloc(tmpfiles, sizeof(char *) * len);
-  tmpfiles[len - 2] = path;
-  tmpfiles[len - 1] = NULL;
+  chibicc_tmpfiles = realloc(chibicc_tmpfiles, sizeof(char *) * len);
+  chibicc_tmpfiles[len - 2] = path;
+  chibicc_tmpfiles[len - 1] = NULL;
   len++;
   return path;
 }
@@ -377,26 +399,60 @@ static void handle_exit(bool ok) {
   }
 }
 
+static bool NeedsShellQuotes(const char *s) {
+  if (*s) {
+    for (;;) {
+      switch (*s++ & 255) {
+        case 0:
+          return false;
+        case '-':
+        case '.':
+        case '/':
+        case '_':
+        case '0' ... '9':
+        case 'A' ... 'Z':
+        case 'a' ... 'z':
+          break;
+        default:
+          return true;
+      }
+    }
+  } else {
+    return true;
+  }
+}
+
 static bool run_subprocess(char **argv) {
-  // If -### is given, dump the subprocess's command line.
-  if (opt_hash_hash_hash) {
-    fprintf(stderr, "%s", argv[0]);
-    for (int i = 1; argv[i]; i++) fprintf(stderr, " %s", argv[i]);
-    fprintf(stderr, "\n");
+  int rc, ws;
+  size_t i, j;
+  if (opt_verbose) {
+    for (i = 0; argv[i]; i++) {
+      fputc(' ', stderr);
+      if (opt_hash_hash_hash && NeedsShellQuotes(argv[i])) {
+        fputc('\'', stderr);
+        for (j = 0; argv[i][j]; ++j) {
+          if (argv[i][j] != '\'') {
+            fputc(argv[i][j], stderr);
+          } else {
+            fputs("'\"'\"'", stderr);
+          }
+        }
+        fputc('\'', stderr);
+      } else {
+        fputs(argv[i], stderr);
+      }
+    }
+    fputc('\n', stderr);
   }
   if (!vfork()) {
     // Child process. Run a new command.
     execvp(argv[0], argv);
-    _exit(1);
+    _Exit(1);
   }
   // Wait for the child process to finish.
-  int status;
-  for (;;) {
-    if (wait(&status) <= 0) {
-      break;
-    }
-  }
-  return !status;
+  do rc = wait(&ws);
+  while (rc == -1 && errno == EINTR);
+  return WIFEXITED(ws) && WEXITSTATUS(ws) == 0;
 }
 
 static bool run_cc1(int argc, char **argv, char *input, char *output) {
@@ -480,7 +536,7 @@ static void print_dependencies(void) {
   File **files = get_input_files();
   for (int i = 0; files[i]; i++) {
     if (opt_MMD && in_std_include_path(files[i]->name)) continue;
-    fprintf(out, " \\\n  %s", files[i]->name);
+    fprintf(out, " \\\n\t%s", files[i]->name);
   }
   fprintf(out, "\n\n");
   if (opt_MP) {
@@ -559,6 +615,10 @@ static void cc1(void) {
     output_javadown(output_file, prog);
     return;
   }
+  if (opt_P) {
+    output_bindings_python(output_file, prog, tok2);
+    return;
+  }
   FILE *out = open_file(output_file);
   codegen(prog, out);
   fclose(out);
@@ -573,7 +633,7 @@ static int CountArgv(char **argv) {
 static void assemble(char *input, char *output) {
   char *as = getenv("AS");
   if (!as || !*as) as = "as";
-  StringArray arr = {};
+  StringArray arr = {0};
   strarray_push(&arr, as);
   strarray_push(&arr, "-W");
   strarray_push(&arr, "-I.");
@@ -584,9 +644,11 @@ static void assemble(char *input, char *output) {
   strarray_push(&arr, input);
   strarray_push(&arr, "-o");
   strarray_push(&arr, output);
-  strarray_push(&arr, NULL);
   if (1) {
+    bool kludge = opt_save_temps;
+    opt_save_temps = true;
     Assembler(CountArgv(arr.data), arr.data);
+    opt_save_temps = kludge;
   } else {
     handle_exit(run_subprocess(arr.data));
   }
@@ -595,44 +657,52 @@ static void assemble(char *input, char *output) {
 static void run_linker(StringArray *inputs, char *output) {
   char *ld = getenv("LD");
   if (!ld || !*ld) ld = "ld";
-  StringArray arr = {};
+  StringArray arr = {0};
   strarray_push(&arr, ld);
-  strarray_push(&arr, "-o");
-  strarray_push(&arr, output);
   strarray_push(&arr, "-m");
   strarray_push(&arr, "elf_x86_64");
   strarray_push(&arr, "-z");
   strarray_push(&arr, "max-page-size=0x1000");
+  strarray_push(&arr, "-static");
   strarray_push(&arr, "-nostdlib");
   strarray_push(&arr, "--gc-sections");
   strarray_push(&arr, "--build-id=none");
   strarray_push(&arr, "--no-dynamic-linker");
-  strarray_push(&arr, xasprintf("-Ttext-segment=%#x", IMAGE_BASE_VIRTUAL));
-  strarray_push(&arr, "-T");
-  strarray_push(&arr, LDS);
-  strarray_push(&arr, APE);
-  strarray_push(&arr, CRT);
+  /* strarray_push(&arr, "-T"); */
+  /* strarray_push(&arr, LDS); */
+  /* strarray_push(&arr, APE); */
+  /* strarray_push(&arr, CRT); */
   for (int i = 0; i < ld_extra_args.len; i++) {
     strarray_push(&arr, ld_extra_args.data[i]);
   }
   for (int i = 0; i < inputs->len; i++) {
     strarray_push(&arr, inputs->data[i]);
   }
-  strarray_push(&arr, NULL);
+  strarray_push(&arr, "-o");
+  strarray_push(&arr, output);
   handle_exit(run_subprocess(arr.data));
 }
 
-static void OnCtrlC(int sig, siginfo_t *si, ucontext_t *ctx) {
+static void OnCtrlC(int sig, siginfo_t *si, void *ctx) {
   exit(1);
 }
 
 int chibicc(int argc, char **argv) {
-  showcrashreports();
+#ifndef NDEBUG
+  ShowCrashReports();
+#endif
+  atexit(chibicc_cleanup);
   sigaction(SIGINT, &(struct sigaction){.sa_sigaction = OnCtrlC}, NULL);
-  atexit(cleanup);
-  init_macros();
+  for (int i = 1; i < argc; i++) {
+    if (!strcmp(argv[i], "-cc1")) {
+      opt_cc1 = true;
+      break;
+    }
+  }
+  if (opt_cc1) init_macros();
   parse_args(argc, argv);
   if (opt_cc1) {
+    init_macros_conditional();
     add_default_include_paths(argv[0]);
     cc1();
     return 0;
@@ -640,8 +710,8 @@ int chibicc(int argc, char **argv) {
   if (input_paths.len > 1 && opt_o && (opt_c || opt_S | opt_E)) {
     error("cannot specify '-o' with '-c,' '-S' or '-E' with multiple files");
   }
-  StringArray ld_args = {};
-  StringArray dox_args = {};
+  StringArray ld_args = {0};
+  StringArray dox_args = {0};
   for (int i = 0; i < input_paths.len; i++) {
     char *input = input_paths.data[i];
     if (!strncmp(input, "-l", 2)) {
@@ -699,6 +769,11 @@ int chibicc(int argc, char **argv) {
     // Just preprocess
     if (opt_E || opt_M) {
       handle_exit(run_cc1(argc, argv, input, NULL));
+      continue;
+    }
+    // Python Bindings
+    if (opt_P) {
+      handle_exit(run_cc1(argc, argv, input, opt_o ? opt_o : "/dev/stdout"));
       continue;
     }
     // Compile

@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,13 +16,8 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/calls/internal.h"
-#include "libc/dce.h"
-#include "libc/nt/files.h"
-#include "libc/nt/runtime.h"
-#include "libc/str/str.h"
+#include "libc/calls/calls.h"
 #include "libc/sysv/consts/at.h"
-#include "libc/sysv/errfuns.h"
 
 /**
  * Creates directory a.k.a. folder.
@@ -36,9 +31,20 @@
  * @param path is a UTF-8 string, preferably relative w/ forward slashes
  * @param mode can be, for example, 0755
  * @return 0 on success or -1 w/ errno
- * @error EEXIST, ENOTDIR, ENAMETOOLONG, EACCES
+ * @raise EEXIST if named file already exists
+ * @raise ENOTDIR if directory component in `path` existed as non-directory
+ * @raise ENAMETOOLONG if symlink-resolved `path` length exceeds `PATH_MAX`
+ * @raise ENAMETOOLONG if component in `path` exists longer than `NAME_MAX`
+ * @raise EROFS if parent directory is on read-only filesystem
+ * @raise ENOSPC if file system or parent directory is full
+ * @raise EACCES if write permission was denied on parent directory
+ * @raise EACCES if search permission was denied on component in `path`
+ * @raise ENOENT if a component within `path` didn't exist
+ * @raise ENOENT if `path` is an empty string
+ * @raise ELOOP if loop was detected resolving components of `path`
+ * @see makedirs() which is higher-level
+ * @see mkdirat() for modern call
  * @asyncsignalsafe
- * @see makedirs()
  */
 int mkdir(const char *path, unsigned mode) {
   return mkdirat(AT_FDCWD, path, mode);

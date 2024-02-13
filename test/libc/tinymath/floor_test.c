@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2021 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -17,7 +17,8 @@
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
 #include "libc/math.h"
-#include "libc/runtime/gc.internal.h"
+#include "libc/mem/gc.h"
+#include "libc/testlib/ezbench.h"
 #include "libc/testlib/testlib.h"
 #include "libc/x/x.h"
 
@@ -52,4 +53,13 @@ TEST(floorl, test) {
   EXPECT_STREQ("-NAN", gc(xdtoal(floorl(-NAN))));
   EXPECT_STREQ("INFINITY", gc(xdtoal(floorl(INFINITY))));
   EXPECT_STREQ("-INFINITY", gc(xdtoal(floorl(-INFINITY))));
+}
+
+BENCH(floorl, bench) {
+  double _floor(double) asm("floor");
+  float _floorf(float) asm("floorf");
+  long double _floorl(long double) asm("floorl");
+  EZBENCH2("floor", donothing, _floor(.7));   /* ~1ns */
+  EZBENCH2("floorf", donothing, _floorf(.7)); /* ~3ns */
+  EZBENCH2("floorl", donothing, _floorl(.7)); /* ~9ns */
 }

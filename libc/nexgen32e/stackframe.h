@@ -1,6 +1,6 @@
 #ifndef COSMOPOLITAN_LIBC_NEXGEN32E_STACKFRAME_H_
 #define COSMOPOLITAN_LIBC_NEXGEN32E_STACKFRAME_H_
-#if !(__ASSEMBLER__ + __LINKER__ + 0)
+#ifdef _COSMO_SOURCE
 COSMOPOLITAN_C_START_
 
 struct StackFrame {
@@ -9,5 +9,5 @@ struct StackFrame {
 };
 
 COSMOPOLITAN_C_END_
-#endif /* !(__ASSEMBLER__ + __LINKER__ + 0) */
+#endif /* _COSMO_SOURCE */
 #endif /* COSMOPOLITAN_LIBC_NEXGEN32E_STACKFRAME_H_ */

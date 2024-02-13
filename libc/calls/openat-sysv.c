@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2021 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,29 +16,45 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/calls/internal.h"
+#include "libc/calls/syscall-sysv.internal.h"
+#include "libc/dce.h"
 #include "libc/errno.h"
+#include "libc/str/str.h"
 #include "libc/sysv/consts/f.h"
 #include "libc/sysv/consts/fd.h"
 #include "libc/sysv/consts/o.h"
 
 int sys_openat(int dirfd, const char *file, int flags, unsigned mode) {
-  int fd, err;
-  err = errno;
-  fd = __sys_openat(dirfd, file, flags, mode);
-
-  /*
-   * RHEL5 doesn't support O_CLOEXEC
-   * What on earth is it doing here?
-   * It returns -530!
-   */
-  if (IsLinux() && fd == -1 && errno > 255) {
-    errno = err;
-    fd = __sys_openat(dirfd, file, flags & ~O_CLOEXEC, mode);
-    if (fd != -1 && (flags & O_CLOEXEC)) {
-      __sys_fcntl(fd, F_SETFD, FD_CLOEXEC);
+  static bool once, modernize;
+  int d, e, f;
+  // RHEL5 doesn't support O_CLOEXEC. It's hard to test for this.
+  // Sometimes the system call succeeds and it just doesn't set the
+  // flag. Other times, it return -530 which makes no sense.
+  if (!IsLinux() || !(flags & O_CLOEXEC) || modernize) {
+    d = __sys_openat(dirfd, file, flags, mode);
+  } else if (once) {
+    if ((d = __sys_openat(dirfd, file, flags & ~O_CLOEXEC, mode)) != -1) {
+      e = errno;
+      if (__sys_fcntl(d, F_SETFD, FD_CLOEXEC) == -1) {
+        errno = e;
+      }
+    }
+  } else {
+    e = errno;
+    if ((d = __sys_openat(dirfd, file, flags, mode)) != -1) {
+      if ((f = __sys_fcntl(d, F_GETFD)) != -1) {
+        if (f & FD_CLOEXEC) {
+          modernize = true;
+        } else {
+          __sys_fcntl(d, F_SETFD, FD_CLOEXEC);
+        }
+      }
+      errno = e;
+      once = true;
+    } else if (errno > 255) {
+      once = true;
+      d = sys_openat(dirfd, file, flags, mode);
     }
   }
-
-  return fd;
+  return d;
 }

@@ -1,10 +1,11 @@
 #ifndef COSMOPOLITAN_LIBC_LOG_GDB_H_
 #define COSMOPOLITAN_LIBC_LOG_GDB_H_
 #include "libc/calls/calls.h"
-#include "libc/calls/wait4.h"
+#include "libc/calls/struct/rusage.h"
+#include "libc/dce.h"
+#include "libc/proc/proc.internal.h"
 #include "libc/sysv/consts/nr.h"
 #include "libc/sysv/consts/w.h"
-#if !(__ASSEMBLER__ + __LINKER__ + 0)
 COSMOPOLITAN_C_START_
 
 /**
@@ -18,10 +19,10 @@ COSMOPOLITAN_C_START_
 extern volatile int g_gdbsync;
 
 int gdbexec(const char *);
-int attachdebugger(intptr_t);
+int AttachDebugger(intptr_t);
 
-#define attachdebugger(CONTINUE_TO_ADDR) /* shorten backtraces */ \
-  SYNCHRONIZE_DEBUGGER((attachdebugger)(CONTINUE_TO_ADDR))
+#define AttachDebugger(CONTINUE_TO_ADDR) /* shorten backtraces */ \
+  SYNCHRONIZE_DEBUGGER((AttachDebugger)(CONTINUE_TO_ADDR))
 
 #define SYNCHRONIZE_DEBUGGER(PID)                                    \
   ({                                                                 \
@@ -40,22 +41,25 @@ int attachdebugger(intptr_t);
     Pid;                                                             \
   })
 
-#define __inline_wait4(PID, OPT_OUT_WSTATUS, OPTIONS, OPT_OUT_RUSAGE) \
-  ({                                                                  \
-    int64_t WaAx;                                                     \
-    if (!IsWindows()) {                                               \
-      asm volatile("mov\t%5,%%r10\n\t"                                \
-                   "syscall"                                          \
-                   : "=a"(WaAx)                                       \
-                   : "0"(__NR_wait4), "D"(PID), "S"(OPT_OUT_WSTATUS), \
-                     "d"(OPTIONS), "g"(OPT_OUT_RUSAGE)                \
-                   : "rcx", "r10", "r11", "cc", "memory");            \
-    } else {                                                          \
+#ifdef __x86_64__
+#define __inline_wait4(PID, OPT_OUT_WSTATUS, OPTIONS, OPT_OUT_RUSAGE)     \
+  ({                                                                      \
+    int64_t WaAx;                                                         \
+    if (!IsWindows()) {                                                   \
+      asm volatile("mov\t%5,%%r10\n\t"                                    \
+                   "syscall"                                              \
+                   : "=a"(WaAx)                                           \
+                   : "0"(__NR_wait4), "D"(PID), "S"(OPT_OUT_WSTATUS),     \
+                     "d"(OPTIONS), "g"(OPT_OUT_RUSAGE)                    \
+                   : "rcx", "r8", "r9", "r10", "r11", "memory", "cc");    \
+    } else {                                                              \
       WaAx = sys_wait4_nt(PID, OPT_OUT_WSTATUS, OPTIONS, OPT_OUT_RUSAGE); \
-    }                                                                 \
-    WaAx;                                                             \
+    }                                                                     \
+    WaAx;                                                                 \
   })
+#else
+#define __inline_wait4 wait4
+#endif
 
 COSMOPOLITAN_C_END_
-#endif /* !(__ASSEMBLER__ + __LINKER__ + 0) */
 #endif /* COSMOPOLITAN_LIBC_LOG_GDB_H_ */

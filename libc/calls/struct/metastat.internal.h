@@ -1,9 +1,52 @@
 #ifndef COSMOPOLITAN_LIBC_CALLS_STRUCT_METASTAT_H_
 #define COSMOPOLITAN_LIBC_CALLS_STRUCT_METASTAT_H_
-#ifndef __STRICT_ANSI__
 #include "libc/calls/struct/stat.h"
-#if !(__ASSEMBLER__ + __LINKER__ + 0)
+#include "libc/calls/struct/timespec.h"
 COSMOPOLITAN_C_START_
+
+#define METASTAT(x, field)                  \
+  (IsLinux() || IsMetal() ? x.linux.field   \
+   : IsXnu()              ? x.xnu.field     \
+   : IsFreebsd()          ? x.freebsd.field \
+   : IsOpenbsd()          ? x.openbsd.field \
+   : IsNetbsd()           ? x.netbsd.field  \
+                          : 0)
+
+struct stat_linux {
+  uint64_t st_dev;
+  uint64_t st_ino;
+#ifdef __x86_64__
+  uint64_t st_nlink;
+  uint32_t st_mode;
+  uint32_t st_uid;
+  uint32_t st_gid;
+  uint32_t __pad0;
+  uint64_t st_rdev;
+  int64_t st_size;
+  int64_t st_blksize;
+  int64_t st_blocks;
+  struct timespec st_atim;
+  struct timespec st_mtim;
+  struct timespec st_ctim;
+  int64_t __unused[3];
+#elif defined(__aarch64__)
+  uint32_t st_mode;
+  uint32_t st_nlink;
+  uint32_t st_uid;
+  uint32_t st_gid;
+  uint64_t st_rdev;
+  uint64_t __pad1;
+  int64_t st_size;
+  int32_t st_blksize;
+  int32_t __pad2;
+  int64_t st_blocks;
+  struct timespec st_atim;
+  struct timespec st_mtim;
+  struct timespec st_ctim;
+  uint32_t __unused4;
+  uint32_t __unused5;
+#endif
+};
 
 struct stat_xnu {
   int32_t st_dev;
@@ -44,7 +87,7 @@ struct stat_openbsd {
   int64_t st_size, st_blocks;
   int32_t st_blksize;
   uint32_t st_flags, st_gen;
-  struct timespec __st_birthtim;
+  struct timespec st_birthtim;
 };
 
 struct stat_netbsd {
@@ -60,14 +103,15 @@ struct stat_netbsd {
 };
 
 union metastat {
-  struct stat linux;
+  struct stat cosmo;
+  struct stat_linux linux;
   struct stat_xnu xnu;
   struct stat_freebsd freebsd;
   struct stat_openbsd openbsd;
   struct stat_netbsd netbsd;
 };
 
+void __stat2cosmo(struct stat *restrict, const union metastat *);
+
 COSMOPOLITAN_C_END_
-#endif /* !(__ASSEMBLER__ + __LINKER__ + 0) */
-#endif /* !ANSI */
 #endif /* COSMOPOLITAN_LIBC_CALLS_STRUCT_METASTAT_H_ */

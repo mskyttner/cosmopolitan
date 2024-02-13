@@ -38,14 +38,14 @@
  */
 #include "libc/calls/calls.h"
 #include "libc/calls/struct/stat.h"
-#include "libc/rand/rand.h"
 #include "libc/runtime/runtime.h"
+#include "libc/stdio/rand.h"
 #include "libc/stdio/stdio.h"
 #include "libc/str/str.h"
 #include "libc/time/time.h"
 #include "third_party/zlib/zlib.h"
+// clang-format off
 
-/* clang-format off */
 #define DICT "usr/share/dict/hangman"
 #define MAXERR 7
 #define MINSCORE 0
@@ -178,8 +178,7 @@ void youwon()
 	printf("you win, the word is %s\n",realword);
 }
 
-main(argc,argv)
-	char **argv;
+int main(int argc,char **argv)
 {
 	if(argc==1) dictfile=DICT;
 	else dictfile=argv[1];

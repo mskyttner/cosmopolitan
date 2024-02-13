@@ -1,15 +1,8 @@
-/*
-** $Id: lfunc.h $
-** Auxiliary functions to manipulate prototypes and closures
-** See Copyright Notice in lua.h
-*/
-
 #ifndef lfunc_h
 #define lfunc_h
 
 #include "third_party/lua/lobject.h"
 
-/* clang-format off */
 
 #define sizeCclosure(n)	(cast_int(offsetof(CClosure, upvalue)) + \
                          cast_int(sizeof(TValue)) * (n))

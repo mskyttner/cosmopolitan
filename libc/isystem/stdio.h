@@ -1,6 +1,9 @@
-#ifndef LIBC_ISYSTEM_STDIO_H_
-#define LIBC_ISYSTEM_STDIO_H_
-#include "libc/fmt/fmt.h"
-#include "libc/log/log.h"
+#ifndef _STDIO_H
+#define _STDIO_H
+#include "libc/calls/calls.h"
+#include "libc/calls/weirdtypes.h"
+#include "libc/stdio/dprintf.h"
 #include "libc/stdio/stdio.h"
-#endif
+#include "libc/temp.h"
+#include "third_party/musl/tempnam.h"
+#endif /* _STDIO_H */

@@ -1,19 +1,44 @@
-/*
-** $Id: lstrlib.c $
-** Standard library for string operations and pattern-matching
-** See Copyright Notice in lua.h
-*/
-
+/*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
+╚──────────────────────────────────────────────────────────────────────────────╝
+│                                                                              │
+│  Lua                                                                         │
+│  Copyright © 2004-2021 Lua.org, PUC-Rio.                                     │
+│                                                                              │
+│  Permission is hereby granted, free of charge, to any person obtaining       │
+│  a copy of this software and associated documentation files (the             │
+│  "Software"), to deal in the Software without restriction, including         │
+│  without limitation the rights to use, copy, modify, merge, publish,         │
+│  distribute, sublicense, and/or sell copies of the Software, and to          │
+│  permit persons to whom the Software is furnished to do so, subject to       │
+│  the following conditions:                                                   │
+│                                                                              │
+│  The above copyright notice and this permission notice shall be              │
+│  included in all copies or substantial portions of the Software.             │
+│                                                                              │
+│  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,             │
+│  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF          │
+│  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.      │
+│  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY        │
+│  CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,        │
+│  TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE           │
+│  SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                      │
+│                                                                              │
+╚─────────────────────────────────────────────────────────────────────────────*/
 #define lstrlib_c
 #define LUA_LIB
-
 #include "libc/math.h"
+#include "libc/str/str.h"
+#include "third_party/lua/cosmo.h"
 #include "third_party/lua/lauxlib.h"
 #include "third_party/lua/lprefix.h"
 #include "third_party/lua/lua.h"
 #include "third_party/lua/lualib.h"
 
-/* clang-format off */
+asm(".ident\t\"\\n\\n\
+Lua 5.4.3 (MIT License)\\n\
+Copyright 1994–2021 Lua.org, PUC-Rio.\"");
+asm(".include \"libc/disclaimer.inc\"");
 
 
 /*
@@ -40,6 +65,8 @@
 	(sizeof(size_t) < sizeof(int) ? MAX_SIZET : (size_t)(INT_MAX))
 
 
+
+static int str_format(lua_State *);
 
 
 static int str_len (lua_State *L) {
@@ -142,8 +169,9 @@ static int str_rep (lua_State *L) {
   const char *s = luaL_checklstring(L, 1, &l);
   lua_Integer n = luaL_checkinteger(L, 2);
   const char *sep = luaL_optlstring(L, 3, "", &lsep);
-  if (n <= 0) lua_pushliteral(L, "");
-  else if (l + lsep < l || l + lsep > MAXSIZE / n)  /* may overflow? */
+  if (n <= 0)
+    lua_pushliteral(L, "");
+  else if (l_unlikely(l + lsep < l || l + lsep > MAXSIZE / n))
     return luaL_error(L, "resulting string too large");
   else {
     size_t totallen = (size_t)n * l + (size_t)(n - 1) * lsep;
@@ -171,7 +199,7 @@ static int str_byte (lua_State *L) {
   size_t pose = getendpos(L, 3, pi, l);
   int n, i;
   if (posi > pose) return 0;  /* empty interval; return no values */
-  if (pose - posi >= (size_t)INT_MAX)  /* arithmetic overflow? */
+  if (l_unlikely(pose - posi >= (size_t)INT_MAX))  /* arithmetic overflow? */
     return luaL_error(L, "string slice too long");
   n = (int)(pose -  posi) + 1;
   luaL_checkstack(L, n, "string slice too long");
@@ -225,7 +253,7 @@ static int str_dump (lua_State *L) {
   luaL_checktype(L, 1, LUA_TFUNCTION);
   lua_settop(L, 1);  /* ensure function is on the top of the stack */
   state.init = 0;
-  if (lua_dump(L, writer, &state, strip) != 0)
+  if (l_unlikely(lua_dump(L, writer, &state, strip) != 0))
     return luaL_error(L, "unable to dump given function");
   luaL_pushresult(&state.B);
   return 1;
@@ -265,7 +293,8 @@ static int tonum (lua_State *L, int arg) {
 
 static void trymt (lua_State *L, const char *mtname) {
   lua_settop(L, 2);  /* back to the original arguments */
-  if (lua_type(L, 2) == LUA_TSTRING || !luaL_getmetafield(L, 2, mtname))
+  if (l_unlikely(lua_type(L, 2) == LUA_TSTRING ||
+                 !luaL_getmetafield(L, 2, mtname)))
     luaL_error(L, "attempt to %s a '%s' with a '%s'", mtname + 2,
                   luaL_typename(L, -2), luaL_typename(L, -1));
   lua_insert(L, -3);  /* put metamethod before arguments */
@@ -291,11 +320,35 @@ static int arith_sub (lua_State *L) {
 }
 
 static int arith_mul (lua_State *L) {
-  return arith(L, LUA_OPMUL, "__mul");
+  if (lua_isinteger(L, 2)) {
+    // [jart] python multiply string operator
+    lua_pushcfunction(L, str_rep);
+    lua_pushvalue(L, 1);
+    lua_pushvalue(L, 2);
+    lua_call(L, 2, 1);
+    return 1;
+  } else {
+    return arith(L, LUA_OPMUL, "__mul");
+  }
 }
 
 static int arith_mod (lua_State *L) {
-  return arith(L, LUA_OPMOD, "__mod");
+  int i, n;
+  if (lua_istable(L, 2)) {
+    // [jart] python printf operator
+    lua_len(L, 2);
+    n = lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    lua_pushcfunction(L, str_format);
+    lua_pushvalue(L, 1);
+    for (i = 1; i <= n; ++i) {
+      lua_geti(L, 2, i);
+    }
+    lua_call(L, 1 + n, 1);
+    return 1;
+  } else {
+    return arith(L, LUA_OPMOD, "__mod");
+  }
 }
 
 static int arith_pow (lua_State *L) {
@@ -373,7 +426,8 @@ static const char *match (MatchState *ms, const char *s, const char *p);
 
 static int check_capture (MatchState *ms, int l) {
   l -= '1';
-  if (l < 0 || l >= ms->level || ms->capture[l].len == CAP_UNFINISHED)
+  if (l_unlikely(l < 0 || l >= ms->level ||
+                 ms->capture[l].len == CAP_UNFINISHED))
     return luaL_error(ms->L, "invalid capture index %%%d", l + 1);
   return l;
 }
@@ -390,14 +444,14 @@ static int capture_to_close (MatchState *ms) {
 static const char *classend (MatchState *ms, const char *p) {
   switch (*p++) {
     case L_ESC: {
-      if (p == ms->p_end)
+      if (l_unlikely(p == ms->p_end))
         luaL_error(ms->L, "malformed pattern (ends with '%%')");
       return p+1;
     }
     case '[': {
       if (*p == '^') p++;
       do {  /* look for a ']' */
-        if (p == ms->p_end)
+        if (l_unlikely(p == ms->p_end))
           luaL_error(ms->L, "malformed pattern (missing ']')");
         if (*(p++) == L_ESC && p < ms->p_end)
           p++;  /* skip escapes (e.g. '%]') */
@@ -472,7 +526,7 @@ static int singlematch (MatchState *ms, const char *s, const char *p,
 
 static const char *matchbalance (MatchState *ms, const char *s,
                                    const char *p) {
-  if (p >= ms->p_end - 1)
+  if (l_unlikely(p >= ms->p_end - 1))
     luaL_error(ms->L, "malformed pattern (missing arguments to '%%b')");
   if (*s != *p) return NULL;
   else {
@@ -533,7 +587,7 @@ static const char *start_capture (MatchState *ms, const char *s,
 
 
 static const char *end_capture (MatchState *ms, const char *s,
-                                  const char *p) {
+                                const char *p) {
   int l = capture_to_close(ms);
   const char *res;
   ms->capture[l].len = s - ms->capture[l].init;  /* close capture */
@@ -555,7 +609,7 @@ static const char *match_capture (MatchState *ms, const char *s, int l) {
 
 
 static const char *match (MatchState *ms, const char *s, const char *p) {
-  if (ms->matchdepth-- == 0)
+  if (l_unlikely(ms->matchdepth-- == 0))
     luaL_error(ms->L, "pattern too complex");
   init: /* using goto's to optimize tail recursion */
   if (p != ms->p_end) {  /* end of pattern? */
@@ -589,7 +643,7 @@ static const char *match (MatchState *ms, const char *s, const char *p) {
           case 'f': {  /* frontier? */
             const char *ep; char previous;
             p += 2;
-            if (*p != '[')
+            if (l_unlikely(*p != '['))
               luaL_error(ms->L, "missing '[' after '%%f' in pattern");
             ep = classend(ms, p);  /* points to what is next */
             previous = (s == ms->src_init) ? '\0' : *(s - 1);
@@ -689,7 +743,7 @@ static const char *lmemfind (const char *s1, size_t l1,
 static size_t get_onecapture (MatchState *ms, int i, const char *s,
                               const char *e, const char **cap) {
   if (i >= ms->level) {
-    if (i != 0)
+    if (l_unlikely(i != 0))
       luaL_error(ms->L, "invalid capture index %%%d", i + 1);
     *cap = s;
     return e - s;
@@ -697,7 +751,7 @@ static size_t get_onecapture (MatchState *ms, int i, const char *s,
   else {
     ptrdiff_t capl = ms->capture[i].len;
     *cap = ms->capture[i].init;
-    if (capl == CAP_UNFINISHED)
+    if (l_unlikely(capl == CAP_UNFINISHED))
       luaL_error(ms->L, "unfinished capture");
     else if (capl == CAP_POSITION)
       lua_pushinteger(ms->L, (ms->capture[i].init - ms->src_init) + 1);
@@ -916,7 +970,7 @@ static int add_value (MatchState *ms, luaL_Buffer *b, const char *s,
     luaL_addlstring(b, s, e - s);  /* keep original text */
     return 0;  /* no changes */
   }
-  else if (!lua_isstring(L, -1))
+  else if (l_unlikely(!lua_isstring(L, -1)))
     return luaL_error(L, "invalid replacement value (a %s)",
                          luaL_typename(L, -1));
   else {
@@ -1048,7 +1102,7 @@ static int lua_number2strx (lua_State *L, char *buff, int sz,
     for (i = 0; i < n; i++)
       buff[i] = toupper(uchar(buff[i]));
   }
-  else if (fmt[SIZELENMOD] != 'a')
+  else if (l_unlikely(fmt[SIZELENMOD] != 'a'))
     return luaL_error(L, "modifiers for format '%%a'/'%%A' not implemented");
   return n;
 }
@@ -1401,7 +1455,7 @@ static int getnum (const char **fmt, int df) {
 */
 static int getnumlimit (Header *h, const char **fmt, int df) {
   int sz = getnum(fmt, df);
-  if (sz > MAXINTSIZE || sz <= 0)
+  if (l_unlikely(sz > MAXINTSIZE || sz <= 0))
     return luaL_error(h->L, "integral size (%d) out of limits [1,%d]",
                             sz, MAXINTSIZE);
   return sz;
@@ -1442,7 +1496,7 @@ static KOption getoption (Header *h, const char **fmt, int *size) {
     case 's': *size = getnumlimit(h, fmt, sizeof(size_t)); return Kstring;
     case 'c':
       *size = getnum(fmt, -1);
-      if (*size == -1)
+      if (l_unlikely(*size == -1))
         luaL_error(h->L, "missing size for format option 'c'");
       return Kchar;
     case 'z': return Kzstr;
@@ -1481,7 +1535,7 @@ static KOption getdetails (Header *h, size_t totalsize,
   else {
     if (align > h->maxalign)  /* enforce maximum alignment */
       align = h->maxalign;
-    if ((align & (align - 1)) != 0)  /* is 'align' not a power of 2? */
+    if (l_unlikely((align & (align - 1)) != 0))  /* not a power of 2? */
       luaL_argerror(h->L, 1, "format asks for alignment not power of 2");
     *ntoalign = (align - (int)(totalsize & (align - 1))) & (align - 1);
   }
@@ -1673,7 +1727,7 @@ static lua_Integer unpackint (lua_State *L, const char *str,
   else if (size > SZINT) {  /* must check unread bytes */
     int mask = (!issigned || (lua_Integer)res >= 0) ? 0 : MC;
     for (i = limit; i < size; i++) {
-      if ((unsigned char)str[islittle ? i : size - 1 - i] != mask)
+      if (l_unlikely((unsigned char)str[islittle ? i : size - 1 - i] != mask))
         luaL_error(L, "%d-byte integer does not fit into Lua Integer", size);
     }
   }

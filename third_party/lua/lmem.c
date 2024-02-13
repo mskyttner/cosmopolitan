@@ -1,12 +1,33 @@
-/*
-** $Id: lmem.c $
-** Interface to Memory Manager
-** See Copyright Notice in lua.h
-*/
-
+/*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
+╚──────────────────────────────────────────────────────────────────────────────╝
+│                                                                              │
+│  Lua                                                                         │
+│  Copyright © 2004-2021 Lua.org, PUC-Rio.                                     │
+│                                                                              │
+│  Permission is hereby granted, free of charge, to any person obtaining       │
+│  a copy of this software and associated documentation files (the             │
+│  "Software"), to deal in the Software without restriction, including         │
+│  without limitation the rights to use, copy, modify, merge, publish,         │
+│  distribute, sublicense, and/or sell copies of the Software, and to          │
+│  permit persons to whom the Software is furnished to do so, subject to       │
+│  the following conditions:                                                   │
+│                                                                              │
+│  The above copyright notice and this permission notice shall be              │
+│  included in all copies or substantial portions of the Software.             │
+│                                                                              │
+│  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,             │
+│  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF          │
+│  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.      │
+│  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY        │
+│  CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,        │
+│  TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE           │
+│  SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                      │
+│                                                                              │
+╚─────────────────────────────────────────────────────────────────────────────*/
 #define lmem_c
 #define LUA_CORE
-
+#include "libc/log/log.h"
 #include "third_party/lua/ldebug.h"
 #include "third_party/lua/ldo.h"
 #include "third_party/lua/lgc.h"
@@ -16,16 +37,20 @@
 #include "third_party/lua/lstate.h"
 #include "third_party/lua/lua.h"
 
-/* clang-format off */
+asm(".ident\t\"\\n\\n\
+Lua 5.4.3 (MIT License)\\n\
+Copyright 1994–2021 Lua.org, PUC-Rio.\"");
+asm(".include \"libc/disclaimer.inc\"");
+
 
 #if defined(EMERGENCYGCTESTS)
 /*
-** First allocation will fail whenever not building initial state
-** and not shrinking a block. (This fail will trigger 'tryagain' and
-** a full GC cycle at every allocation.)
+** First allocation will fail whenever not building initial state.
+** (This fail will trigger 'tryagain' and a full GC cycle at every
+** allocation.)
 */
 static void *firsttry (global_State *g, void *block, size_t os, size_t ns) {
-  if (completestate(g) && ns > os)
+  if (completestate(g) && ns > 0)  /* frees never fail */
     return NULL;  /* fail */
   else  /* normal allocation */
     return (*g->frealloc)(g->ud, block, os, ns);
@@ -79,7 +104,7 @@ void *luaM_growaux_ (lua_State *L, void *block, int nelems, int *psize,
   if (nelems + 1 <= size)  /* does one extra element still fit? */
     return block;  /* nothing to be done */
   if (size >= limit / 2) {  /* cannot double it? */
-    if (unlikely(size >= limit))  /* cannot grow even a little? */
+    if (l_unlikely(size >= limit))  /* cannot grow even a little? */
       luaG_runerror(L, "too many %s (limit is %d)", what, limit);
     size = limit;  /* still have at least one free place */
   }
@@ -134,15 +159,18 @@ void luaM_free_ (lua_State *L, void *block, size_t osize) {
 
 
 /*
-** In case of allocation fail, this function will call the GC to try
-** to free some memory and then try the allocation again.
-** (It should not be called when shrinking a block, because then the
-** interpreter may be in the middle of a collection step.)
+** In case of allocation fail, this function will do an emergency
+** collection to free some memory and then try the allocation again.
+** The GC should not be called while state is not fully built, as the
+** collector is not yet fully initialized. Also, it should not be called
+** when 'gcstopem' is true, because then the interpreter is in the
+** middle of a collection step.
 */
 static void *tryagain (lua_State *L, void *block,
                        size_t osize, size_t nsize) {
   global_State *g = G(L);
-  if (completestate(g)) {  /* is state fully build? */
+  if (completestate(g) && !g->gcstopem) {
+    WARNF("reacting to malloc() failure by running lua garbage collector...");
     luaC_fullgc(L, 1);  /* try to free some memory... */
     return (*g->frealloc)(g->ud, block, osize, nsize);  /* try again */
   }
@@ -152,17 +180,14 @@ static void *tryagain (lua_State *L, void *block,
 
 /*
 ** Generic allocation routine.
-** If allocation fails while shrinking a block, do not try again; the
-** GC shrinks some blocks and it is not reentrant.
 */
 void *luaM_realloc_ (lua_State *L, void *block, size_t osize, size_t nsize) {
   void *newblock;
   global_State *g = G(L);
   lua_assert((osize == 0) == (block == NULL));
   newblock = firsttry(g, block, osize, nsize);
-  if (unlikely(newblock == NULL && nsize > 0)) {
-    if (nsize > osize)  /* not shrinking a block? */
-      newblock = tryagain(L, block, osize, nsize);
+  if (l_unlikely(newblock == NULL && nsize > 0)) {
+    newblock = tryagain(L, block, osize, nsize);
     if (newblock == NULL)  /* still no memory? */
       return NULL;  /* do not update 'GCdebt' */
   }
@@ -175,7 +200,7 @@ void *luaM_realloc_ (lua_State *L, void *block, size_t osize, size_t nsize) {
 void *luaM_saferealloc_ (lua_State *L, void *block, size_t osize,
                                                     size_t nsize) {
   void *newblock = luaM_realloc_(L, block, osize, nsize);
-  if (unlikely(newblock == NULL && nsize > 0))  /* allocation failed? */
+  if (l_unlikely(newblock == NULL && nsize > 0))  /* allocation failed? */
     luaM_error(L);
   return newblock;
 }
@@ -187,7 +212,7 @@ void *luaM_malloc_ (lua_State *L, size_t size, int tag) {
   else {
     global_State *g = G(L);
     void *newblock = firsttry(g, NULL, tag, size);
-    if (unlikely(newblock == NULL)) {
+    if (l_unlikely(newblock == NULL)) {
       newblock = tryagain(L, NULL, tag, size);
       if (newblock == NULL)
         luaM_error(L);

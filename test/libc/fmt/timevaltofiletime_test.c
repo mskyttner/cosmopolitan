@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,17 +16,26 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
+#include "libc/time/time.h"
 #include "libc/calls/struct/timeval.h"
-#include "libc/fmt/conv.h"
+#include "libc/fmt/wintime.internal.h"
 #include "libc/nt/struct/filetime.h"
 #include "libc/testlib/testlib.h"
-#include "libc/time/time.h"
 
 TEST(TimeValToFileTime, roundTrip) {
   struct timeval tv1, tv2;
   tv1.tv_sec = 31337;
   tv1.tv_usec = 1337;
-  FileTimeToTimeVal(&tv2, TimeValToFileTime(&tv1));
+  tv2 = FileTimeToTimeVal(TimeValToFileTime(tv1));
   EXPECT_EQ(31337, tv2.tv_sec);
   EXPECT_EQ(1337, tv2.tv_usec);
+}
+
+TEST(TimeSpecToFileTime, roundTrip_withSomeTruncation) {
+  struct timespec tv1, tv2;
+  tv1.tv_sec = 31337;
+  tv1.tv_nsec = 1337;
+  tv2 = FileTimeToTimeSpec(TimeSpecToFileTime(tv1));
+  EXPECT_EQ(31337, tv2.tv_sec);
+  EXPECT_EQ(1300, tv2.tv_nsec);
 }

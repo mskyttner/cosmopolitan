@@ -1,5 +1,5 @@
 /*-*- mode:unix-assembly; indent-tabs-mode:t; tab-width:8; coding:utf-8     -*-│
-│vi: set et ft=asm ts=8 tw=8 fenc=utf-8                                     :vi│
+│ vi: set noet ft=asm ts=8 sw=8 fenc=utf-8                                 :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -17,10 +17,8 @@
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
 #include "libc/macros.internal.h"
-#include "libc/runtime/internal.h"
 #include "libc/sysv/consts/prot.h"
 #include "libc/dce.h"
-.source	__FILE__
 
 //	Decentralized function for process initialization.
 //
@@ -44,21 +42,27 @@
 //	@param	r15 is envp (still callee saved)
 //	@note	rdi is __init_bss_start (callee monotonic lockstep)
 //	@note	rsi is __init_rodata_start (callee monotonic lockstep)
-//	@see	.init.start & .init.end (libc/macros.internal.inc)
+//	@see	.init.start & .init.end (libc/macros.internal.h)
 //	@see	ape/ape.lds
 	.section .initprologue,"ax",@progbits
 	.type	_init,@function
 	.globl	_init
-_init:	push	%rbp
+_init:
+#ifdef __x86_64__
+	push	%rbp
 	mov	%rsp,%rbp
-	.profilable
 	ezlea	__init_bss_start,di
 	ezlea	__init_rodata_start,si
+#elif defined(__aarch64__)
+	stp	x29,x30,[sp,-16]!
+	mov	x29,sp
+#endif
 	.previous/*
 	...
 	decentralized content
 	...
 	*/.section .initepilogue,"ax",@progbits
+#ifdef __x86_64__
 #if IsModeDbg()
 _init_check_rdi_rsi:
 	jmp	2f
@@ -71,20 +75,26 @@ _init_check_rdi_rsi:
 	jne	1b
 3:	.endfn	_init_check_rdi_rsi
 #endif
-_woot:	leave
+	leave
+#elif defined(__aarch64__)
+	ldp	x29,x30,[sp],#16
+#endif
 	ret
 	.previous
 
+#ifdef __x86_64__
+
 //	Decentralized section for packed data structures & initializers.
 //
-//	@see	.initro (libc/macros.internal.inc)
+//	@see	.initro (libc/macros.internal.h)
 //	@see	ape/ape.lds
 	.section .initroprologue,"a",@progbits
 	.type	__init_rodata_start,@object
 	.type	__init_rodata_end,@object
 	.globl	__init_rodata_start,__init_rodata_end
 	.hidden	__init_rodata_start,__init_rodata_end
-	.align	__SIZEOF_POINTER__
+	.balign	__SIZEOF_POINTER__
+	.underrun
 __init_rodata_start:
 	.previous/*
 	...
@@ -93,13 +103,14 @@ __init_rodata_start:
 	*/.section .initroepilogue,"a",@progbits
 __init_rodata_end:
 	.byte	0x90
+	.overrun
 	.previous
 
 //	Decentralized section for unpacked data structures.
 //
 //	Data in this section becomes read-only after initialization.
 //
-//	@see	.piro.bss.init (libc/macros.internal.inc)
+//	@see	.piro.bss.init (libc/macros.internal.h)
 //	@see	libc/runtime/piro.c
 //	@see	ape/ape.lds
 	.section .piro.bss.init.1,"aw",@nobits
@@ -107,7 +118,8 @@ __init_rodata_end:
 	.type	__init_bss_end,@object
 	.globl	__init_bss_start,__init_bss_end
 	.hidden	__init_bss_start,__init_bss_end
-	.align	__SIZEOF_POINTER__
+	.balign	__SIZEOF_POINTER__
+	.underrun
 __init_bss_start:
 	.previous/*
 	...
@@ -116,6 +128,7 @@ __init_bss_start:
 	*/.section .piro.bss.init.3,"aw",@nobits
 __init_bss_end:
 	.byte	0
+	.overrun
 	.previous
 
 //	Special area for Windows NT support code.
@@ -141,3 +154,5 @@ __text_windows_start:
 __text_windows_end:
 	int3
 	.previous
+
+#endif /* __x86_64__ */

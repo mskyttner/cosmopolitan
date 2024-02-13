@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -17,7 +17,7 @@
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
 #include "libc/mem/mem.h"
-#include "libc/rand/rand.h"
+#include "libc/stdio/rand.h"
 #include "libc/stdio/stdio.h"
 #include "libc/str/str.h"
 #include "libc/testlib/ezbench.h"
@@ -56,7 +56,7 @@ TEST(memccpy, memcpy) {
     b1 = calloc(1, n);
     b2 = calloc(1, n);
     b3 = calloc(1, n);
-    rngset(b1, n, rand64, -1);
+    rngset(b1, n, _rand64, -1);
     e1 = memccpy_pure(b2, b1, 31337, n);
     e2 = memccpy(b3, b1, 31337, n);
     n1 = e1 ? e1 - b2 : n;

@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -19,10 +19,6 @@
 #include "libc/testlib/testlib.h"
 #include "test/libc/xed/lib.h"
 #include "third_party/xed/x86.h"
-
-/**
- * @fileoverview GCC's popular i186+ instruction w/ NexGen32e encoding.
- */
 
 TEST(x86ild, test_C0E800) {
   /*

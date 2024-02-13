@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -21,7 +21,7 @@
 
 #define EPSILON 0.00000001L
 
-testonly bool testlib_almostequallongdouble(long double x, long double y) {
+bool testlib_almostequallongdouble(long double x, long double y) {
   /* TODO(jart): This algorithm has to be binary. */
   if (isnan(x) || isnan(y)) return false;
   return fabsl(x - y) <= EPSILON;

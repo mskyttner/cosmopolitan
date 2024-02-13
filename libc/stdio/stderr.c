@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=8 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=8 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,21 +16,27 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
+#include "libc/calls/calls.h"
 #include "libc/stdio/internal.h"
 #include "libc/stdio/stdio.h"
-
-STATIC_YOINK("_init_stderr");
+#include "libc/sysv/consts/fileno.h"
+#include "libc/sysv/consts/o.h"
+#include "libc/thread/thread.h"
 
 /**
  * Pointer to standard error stream.
  */
 FILE *stderr;
 
-hidden FILE __stderr;
-hidden unsigned char __stderr_buf[BUFSIZ];
+static FILE __stderr;
 
-static textstartup void __stderr_init() {
+__attribute__((__constructor__)) static void __stderr_init(void) {
+  stderr = &__stderr;
+  stderr->fd = STDERR_FILENO;
+  stderr->bufmode = _IONBF;
+  stderr->iomode = O_WRONLY;
+  stderr->buf = stderr->mem;
+  stderr->size = sizeof(stderr->mem);
+  stderr->lock._type = PTHREAD_MUTEX_RECURSIVE;
   __fflush_register(stderr);
 }
-
-const void *const __stderr_ctor[] initarray = {__stderr_init};

@@ -10,6 +10,6 @@
 #include "libc/stdio/stdio.h"
 
 int main() {
-  printf("%s\n", "hello world");
+  printf("hello world\n");
   return 0;
 }

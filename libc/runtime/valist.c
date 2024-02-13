@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -17,7 +17,15 @@
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
 #include "libc/macros.internal.h"
-#include "libc/runtime/valist.h"
+
+/* <sync libc/integral/lp64arg.inc> */
+struct __va_list {
+  uint32_t gp_offset;
+  uint32_t fp_offset;
+  void *overflow_arg_area;
+  void *reg_save_area;
+};
+/* </sync libc/integral/lp64arg.inc> */
 
 static void *__va_arg_mem(struct __va_list *ap, size_t sz, size_t align) {
   void *r = (void *)ROUNDUP((intptr_t)ap->overflow_arg_area, align);

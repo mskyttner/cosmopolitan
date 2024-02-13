@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2021 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -18,7 +18,17 @@
 ╚─────────────────────────────────────────────────────────────────────────────*/
 #include "libc/nt/struct/teb.h"
 #include "libc/runtime/runtime.h"
+#ifdef __x86_64__
 
-textwindows noasan int NtGetVersion(void) {
+/**
+ * Returns New Technology version, e.g.
+ *
+ * This can only be called on Windows.
+ *
+ * @see IsAtLeastWindows10()
+ */
+textwindows int NtGetVersion(void) {
   return (NtGetPeb()->OSMajorVersion & 0xff) << 8 | NtGetPeb()->OSMinorVersion;
 }
+
+#endif /* __x86_64__ */

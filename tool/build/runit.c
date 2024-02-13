@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,63 +16,69 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/alg/alg.h"
-#include "libc/bits/bits.h"
-#include "libc/bits/safemacros.internal.h"
+#include "tool/build/runit.h"
+#include "libc/assert.h"
 #include "libc/calls/calls.h"
-#include "libc/calls/sigbits.h"
-#include "libc/calls/struct/flock.h"
 #include "libc/calls/struct/itimerval.h"
 #include "libc/calls/struct/sigaction.h"
 #include "libc/calls/struct/stat.h"
-#include "libc/calls/struct/timeval.h"
-#include "libc/dce.h"
-#include "libc/dns/dns.h"
+#include "libc/calls/struct/timespec.h"
 #include "libc/errno.h"
-#include "libc/fmt/conv.h"
-#include "libc/fmt/fmt.h"
+#include "libc/fmt/libgen.h"
+#include "libc/intrin/kprintf.h"
+#include "libc/intrin/safemacros.internal.h"
 #include "libc/limits.h"
 #include "libc/log/check.h"
 #include "libc/log/log.h"
+#include "libc/mem/gc.h"
 #include "libc/mem/mem.h"
-#include "libc/runtime/gc.internal.h"
 #include "libc/runtime/runtime.h"
+#include "libc/serialize.h"
 #include "libc/sock/ipclassify.internal.h"
-#include "libc/sock/sock.h"
 #include "libc/stdio/stdio.h"
 #include "libc/str/str.h"
 #include "libc/sysv/consts/af.h"
 #include "libc/sysv/consts/ex.h"
-#include "libc/sysv/consts/exit.h"
-#include "libc/sysv/consts/f.h"
-#include "libc/sysv/consts/fd.h"
-#include "libc/sysv/consts/fileno.h"
 #include "libc/sysv/consts/ipproto.h"
 #include "libc/sysv/consts/itimer.h"
-#include "libc/sysv/consts/lock.h"
+#include "libc/sysv/consts/limits.h"
+#include "libc/sysv/consts/map.h"
 #include "libc/sysv/consts/o.h"
-#include "libc/sysv/consts/pr.h"
-#include "libc/sysv/consts/shut.h"
+#include "libc/sysv/consts/prot.h"
 #include "libc/sysv/consts/sig.h"
 #include "libc/sysv/consts/sock.h"
-#include "libc/time/time.h"
-#include "libc/x/x.h"
-#include "tool/build/runit.h"
+#include "libc/temp.h"
+#include "libc/x/xasprintf.h"
+#include "net/https/https.h"
+#include "third_party/mbedtls/net_sockets.h"
+#include "third_party/mbedtls/ssl.h"
+#include "third_party/musl/netdb.h"
+#include "third_party/zlib/zlib.h"
+#include "tool/build/lib/eztls.h"
+#include "tool/build/lib/psk.h"
+
+#define MAX_WAIT_CONNECT_SECONDS 12
+#define INITIAL_CONNECT_TIMEOUT  100000
 
 /**
  * @fileoverview Remote test runner.
  *
- * This is able to upload and run test binaries on remote operating
- * systems with about 30 milliseconds of latency. It requires zero ops
- * work too, since it deploys the ephemeral runit daemon via SSH upon
- * ECONNREFUSED. That takes 10x longer (300 milliseconds). Further note
- * there's no make -j race conditions here, thanks to SO_REUSEPORT.
+ * We want to scp .com binaries to remote machines and run them. The
+ * problem is that SSH is the slowest thing imaginable, taking about
+ * 300ms to connect to a host that's merely half a millisecond away.
+ *
+ * This program takes 17ms using elliptic curve diffie hellman exchange
+ * where we favor a 32-byte binary preshared key (~/.runit.psk) instead
+ * of certificates. It's how long it takes to connect, copy the binary,
+ * and run it. The remote daemon is deployed via SSH if it's not there.
  *
  *     o/default/tool/build/runit.com             \
  *         o/default/tool/build/runitd.com        \
- *         o/default/test/libc/alg/qsort_test.com \
+ *         o/default/test/libc/mem/qsort_test.com \
  *         freebsd.test.:31337:22
  *
+ * APE binaries are hermetic and embed dependent files within their zip
+ * structure, which is why all we need is this simple test runner tool.
  * The only thing that needs to be configured is /etc/hosts or Bind, to
  * assign numbers to the officially reserved canned names. For example:
  *
@@ -97,12 +103,7 @@
  *     iptables -I INPUT 1 -s 10.0.0.0/8 -p tcp --dport 31337 -j ACCEPT
  *     iptables -I INPUT 1 -s 192.168.0.0/16 -p tcp --dport 31337 -j ACCEPT
  *
- * If your system administrator blocks all ICMP, you'll likely encounter
- * difficulties. Consider offering feedback to his/her manager and grand
- * manager.
- *
- * Finally note this tool isn't designed for untrustworthy environments.
- * It also isn't designed to process untrustworthy inputs.
+ * This tool may be used in zero trust environments.
  */
 
 static const struct addrinfo kResolvHints = {.ai_family = AF_INET,
@@ -111,298 +112,277 @@ static const struct addrinfo kResolvHints = {.ai_family = AF_INET,
 
 int g_sock;
 char *g_prog;
+long g_backoff;
 char *g_runitd;
 jmp_buf g_jmpbuf;
 uint16_t g_sshport;
-char g_ssh[PATH_MAX];
+int connect_latency;
+int execute_latency;
+int handshake_latency;
 char g_hostname[128];
 uint16_t g_runitdport;
 volatile bool alarmed;
 
+int __sys_execve(const char *, char *const[], char *const[]);
+
 static void OnAlarm(int sig) {
   alarmed = true;
-}
-
-forceinline pureconst size_t GreatestTwoDivisor(size_t x) {
-  return x & (~x + 1);
 }
 
 wontreturn void ShowUsage(FILE *f, int rc) {
   fprintf(f, "Usage: %s RUNITD PROGRAM HOSTNAME[:RUNITDPORT[:SSHPORT]]...\n",
           program_invocation_name);
   exit(rc);
-  unreachable;
+  __builtin_unreachable();
 }
 
 void CheckExists(const char *path) {
   if (!isregularfile(path)) {
     fprintf(stderr, "error: %s: not found or irregular\n", path);
     ShowUsage(stderr, EX_USAGE);
-    unreachable;
+    __builtin_unreachable();
   }
-}
-
-nodiscard char *MakeDeployScript(struct addrinfo *remotenic, size_t combytes) {
-  const char *ip4 = (const char *)&remotenic->ai_addr4->sin_addr;
-  return xasprintf("mkdir -p o/ && "
-                   "dd bs=%zu count=%zu of=o/runitd.$$.com 2>/dev/null && "
-                   "exec <&- && "
-                   "chmod +x o/runitd.$$.com && "
-                   "o/runitd.$$.com -rdl%hhu.%hhu.%hhu.%hhu -p %hu && "
-                   "rm -f o/runitd.$$.com",
-                   GreatestTwoDivisor(combytes),
-                   combytes ? combytes / GreatestTwoDivisor(combytes) : 0,
-                   ip4[0], ip4[1], ip4[2], ip4[3], g_runitdport);
-}
-
-void Upload(int pipe, int fd, struct stat *st) {
-  int64_t i;
-  for (i = 0; i < st->st_size;) {
-    CHECK_GT(splice(fd, &i, pipe, NULL, st->st_size - i, 0), 0);
-  }
-  CHECK_NE(-1, close(fd));
-}
-
-void DeployEphemeralRunItDaemonRemotelyViaSsh(struct addrinfo *ai) {
-  int lock;
-  size_t got;
-  char *args[7];
-  struct stat st;
-  char linebuf[32];
-  struct timeval now, then;
-  sigset_t chldmask, savemask;
-  int sshpid, wstatus, binfd, pipefds[2][2];
-  struct sigaction ignore, saveint, savequit;
-  mkdir("o", 0755);
-  CHECK_NE(-1, (lock = open(gc(xasprintf("o/lock.%s", g_hostname)),
-                            O_RDWR | O_CREAT, 0644)));
-  CHECK_NE(-1, flock(lock, LOCK_EX));
-  CHECK_NE(-1, gettimeofday(&now, 0));
-  if (!read(lock, &then, 16) || ((now.tv_sec * 1000 + now.tv_usec / 1000) -
-                                 (then.tv_sec * 1000 + then.tv_usec / 1000)) >=
-                                    (RUNITD_TIMEOUT_MS >> 1)) {
-    DEBUGF("ssh %s:%hu to spawn %s", g_hostname, g_runitdport, g_runitd);
-    CHECK_NE(-1, (binfd = open(g_runitd, O_RDONLY | O_CLOEXEC)));
-    CHECK_NE(-1, fstat(binfd, &st));
-    args[0] = "ssh";
-    args[1] = "-C";
-    args[2] = "-p";
-    args[3] = gc(xasprintf("%hu", g_sshport));
-    args[4] = g_hostname;
-    args[5] = gc(MakeDeployScript(ai, st.st_size));
-    args[6] = NULL;
-    ignore.sa_flags = 0;
-    ignore.sa_handler = SIG_IGN;
-    LOGIFNEG1(sigemptyset(&ignore.sa_mask));
-    LOGIFNEG1(sigaction(SIGINT, &ignore, &saveint));
-    LOGIFNEG1(sigaction(SIGQUIT, &ignore, &savequit));
-    LOGIFNEG1(sigemptyset(&chldmask));
-    LOGIFNEG1(sigaddset(&chldmask, SIGCHLD));
-    LOGIFNEG1(sigprocmask(SIG_BLOCK, &chldmask, &savemask));
-    CHECK_NE(-1, pipe2(pipefds[0], O_CLOEXEC));
-    CHECK_NE(-1, pipe2(pipefds[1], O_CLOEXEC));
-    CHECK_NE(-1, (sshpid = fork()));
-    if (!sshpid) {
-      sigaction(SIGINT, &saveint, NULL);
-      sigaction(SIGQUIT, &savequit, NULL);
-      sigprocmask(SIG_SETMASK, &savemask, NULL);
-      dup2(pipefds[0][0], 0);
-      dup2(pipefds[1][1], 1);
-      execv(g_ssh, args);
-      _exit(127);
-    }
-    LOGIFNEG1(close(pipefds[0][0]));
-    LOGIFNEG1(close(pipefds[1][1]));
-    Upload(pipefds[0][1], binfd, &st);
-    LOGIFNEG1(close(pipefds[0][1]));
-    CHECK_NE(-1, (got = read(pipefds[1][0], linebuf, sizeof(linebuf))));
-    CHECK_GT(got, 0, "on host %s", g_hostname);
-    linebuf[sizeof(linebuf) - 1] = '\0';
-    if (strncmp(linebuf, "ready ", 6) != 0) {
-      FATALF("expected ready response but got %`'.*s", got, linebuf);
-    } else {
-      DEBUGF("got ready response");
-    }
-    g_runitdport = (uint16_t)atoi(&linebuf[6]);
-    LOGIFNEG1(close(pipefds[1][0]));
-    CHECK_NE(-1, waitpid(sshpid, &wstatus, 0));
-    LOGIFNEG1(sigaction(SIGINT, &saveint, NULL));
-    LOGIFNEG1(sigaction(SIGQUIT, &savequit, NULL));
-    LOGIFNEG1(sigprocmask(SIG_SETMASK, &savemask, NULL));
-    if (WIFEXITED(wstatus)) {
-      DEBUGF("ssh %s exited with %d", g_hostname, WEXITSTATUS(wstatus));
-    } else {
-      DEBUGF("ssh %s terminated with %s", g_hostname,
-             strsignal(WTERMSIG(wstatus)));
-    }
-    CHECK(WIFEXITED(wstatus) && !WEXITSTATUS(wstatus), "wstatus=%#x", wstatus);
-    CHECK_NE(-1, gettimeofday(&now, 0));
-    CHECK_NE(-1, lseek(lock, 0, SEEK_SET));
-    CHECK_NE(-1, write(lock, &now, 16));
-  } else {
-    DEBUGF("nospawn %s on %s:%hu", g_runitd, g_hostname, g_runitdport);
-  }
-  LOGIFNEG1(close(lock));
-}
-
-void SetDeadline(int micros) {
-  alarmed = false;
-  LOGIFNEG1(
-      sigaction(SIGALRM, &(struct sigaction){.sa_handler = OnAlarm}, NULL));
-  LOGIFNEG1(setitimer(ITIMER_REAL,
-                      &(const struct itimerval){{0, 0}, {0, micros}}, NULL));
 }
 
 void Connect(void) {
   const char *ip4;
   int rc, err, expo;
   struct addrinfo *ai;
+  struct timespec deadline;
   if ((rc = getaddrinfo(g_hostname, gc(xasprintf("%hu", g_runitdport)),
                         &kResolvHints, &ai)) != 0) {
-    FATALF("%s:%hu: EAI_%s %m", g_hostname, g_runitdport, gai_strerror(rc));
-    unreachable;
+    FATALF("%s:%hu: DNS lookup failed: %s", g_hostname, g_runitdport,
+           gai_strerror(rc));
+    __builtin_unreachable();
   }
-  ip4 = (const char *)&ai->ai_addr4->sin_addr;
-  if (ispublicip(ai->ai_family, &ai->ai_addr4->sin_addr)) {
-    FATALF("%s points to %hhu.%hhu.%hhu.%hhu"
-           " which isn't part of a local/private/testing subnet",
-           g_hostname, ip4[0], ip4[1], ip4[2], ip4[3]);
-    unreachable;
-  }
+  ip4 = (const char *)&((struct sockaddr_in *)ai->ai_addr)->sin_addr;
+  DEBUGF("connecting to %d.%d.%d.%d port %d", ip4[0], ip4[1], ip4[2], ip4[3],
+         ntohs(((struct sockaddr_in *)ai->ai_addr)->sin_port));
   CHECK_NE(-1,
            (g_sock = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol)));
-  expo = 1;
-Reconnect:
+  expo = INITIAL_CONNECT_TIMEOUT;
+  deadline = timespec_add(timespec_real(),
+                          timespec_fromseconds(MAX_WAIT_CONNECT_SECONDS));
+  LOGIFNEG1(sigaction(SIGALRM, &(struct sigaction){.sa_handler = OnAlarm}, 0));
   DEBUGF("connecting to %s (%hhu.%hhu.%hhu.%hhu) to run %s", g_hostname, ip4[0],
          ip4[1], ip4[2], ip4[3], g_prog);
-  SetDeadline(100000);
+  struct timespec start = timespec_real();
 TryAgain:
+  alarmed = false;
+  LOGIFNEG1(setitimer(
+      ITIMER_REAL,
+      &(const struct itimerval){{0, 0}, {expo / 1000000, expo % 1000000}},
+      NULL));
   rc = connect(g_sock, ai->ai_addr, ai->ai_addrlen);
   err = errno;
-  SetDeadline(0);
   if (rc == -1) {
-    if (err == EINTR) goto TryAgain;
-    if (err == ECONNREFUSED || err == EHOSTUNREACH || err == ECONNRESET) {
-      DEBUGF("got %s from %s (%hhu.%hhu.%hhu.%hhu)", strerror(err), g_hostname,
-             ip4[0], ip4[1], ip4[2], ip4[3]);
-      usleep((expo *= 2));
-      DeployEphemeralRunItDaemonRemotelyViaSsh(ai);
-      goto Reconnect;
-    } else {
-      FATALF("%s(%s:%hu): %s", "connect", g_hostname, g_runitdport,
-             strerror(err));
-      unreachable;
+    if (err == EINTR) {
+      expo *= 1.5;
+      if (timespec_cmp(timespec_real(), deadline) >= 0) {
+        FATALF("timeout connecting to %s (%hhu.%hhu.%hhu.%hhu:%d)", g_hostname,
+               ip4[0], ip4[1], ip4[2], ip4[3],
+               ntohs(((struct sockaddr_in *)ai->ai_addr)->sin_port));
+        __builtin_unreachable();
+      }
+      goto TryAgain;
     }
+    FATALF("%s(%s:%hu): %s", "connect", g_hostname, g_runitdport,
+           strerror(err));
   } else {
     DEBUGF("connected to %s", g_hostname);
   }
+  setitimer(ITIMER_REAL, &(const struct itimerval){0}, 0);
   freeaddrinfo(ai);
+  connect_latency = timespec_tomicros(timespec_sub(timespec_real(), start));
 }
 
-void SendRequest(void) {
+bool Send(int tmpfd, const void *output, size_t outputsize) {
+  bool ok;
+  char *zbuf;
+  size_t zsize;
+  int rc, have;
+  static bool once;
+  static z_stream zs;
+  zsize = 32768;
+  zbuf = gc(malloc(zsize));
+  if (!once) {
+    CHECK_EQ(Z_OK, deflateInit2(&zs, 4, Z_DEFLATED, MAX_WBITS, DEF_MEM_LEVEL,
+                                Z_DEFAULT_STRATEGY));
+    once = true;
+  }
+  zs.next_in = output;
+  zs.avail_in = outputsize;
+  ok = true;
+  do {
+    zs.avail_out = zsize;
+    zs.next_out = (unsigned char *)zbuf;
+    rc = deflate(&zs, Z_SYNC_FLUSH);
+    CHECK_NE(Z_STREAM_ERROR, rc);
+    have = zsize - zs.avail_out;
+    rc = write(tmpfd, zbuf, have);
+    if (rc != have) {
+      DEBUGF("write(%d, %d) → %d", tmpfd, have, rc);
+      ok = false;
+      break;
+    }
+  } while (!zs.avail_out);
+  return ok;
+}
+
+bool SendRequest(int tmpfd) {
   int fd;
-  int64_t off;
+  char *p;
+  bool okall;
+  uint32_t crc;
   struct stat st;
   const char *name;
-  unsigned char *hdr;
+  unsigned char *hdr, *q;
   size_t progsize, namesize, hdrsize;
-  DEBUGF("running %s on %s", g_prog, g_hostname);
   CHECK_NE(-1, (fd = open(g_prog, O_RDONLY)));
   CHECK_NE(-1, fstat(fd, &st));
+  CHECK_NE(MAP_FAILED, (p = mmap(0, st.st_size, PROT_READ, MAP_SHARED, fd, 0)));
   CHECK_LE((namesize = strlen((name = basename(g_prog)))), PATH_MAX);
   CHECK_LE((progsize = st.st_size), INT_MAX);
-  CHECK_NOTNULL((hdr = gc(calloc(1, (hdrsize = 4 + 1 + 4 + 4 + namesize)))));
-  hdr[0 + 0] = (unsigned char)((unsigned)RUNITD_MAGIC >> 030);
-  hdr[0 + 1] = (unsigned char)((unsigned)RUNITD_MAGIC >> 020);
-  hdr[0 + 2] = (unsigned char)((unsigned)RUNITD_MAGIC >> 010);
-  hdr[0 + 3] = (unsigned char)((unsigned)RUNITD_MAGIC >> 000);
-  hdr[4 + 0] = kRunitExecute;
-  hdr[5 + 0] = (unsigned char)((unsigned)namesize >> 030);
-  hdr[5 + 1] = (unsigned char)((unsigned)namesize >> 020);
-  hdr[5 + 2] = (unsigned char)((unsigned)namesize >> 010);
-  hdr[5 + 3] = (unsigned char)((unsigned)namesize >> 000);
-  hdr[9 + 0] = (unsigned char)((unsigned)progsize >> 030);
-  hdr[9 + 1] = (unsigned char)((unsigned)progsize >> 020);
-  hdr[9 + 2] = (unsigned char)((unsigned)progsize >> 010);
-  hdr[9 + 3] = (unsigned char)((unsigned)progsize >> 000);
-  memcpy(&hdr[4 + 1 + 4 + 4], name, namesize);
-  CHECK_EQ(hdrsize, write(g_sock, hdr, hdrsize));
-  for (off = 0; off < progsize;) {
-    CHECK_GT(sendfile(g_sock, fd, &off, progsize - off), 0);
+  CHECK_NOTNULL((hdr = gc(calloc(1, (hdrsize = 17 + namesize)))));
+  crc = crc32_z(0, (unsigned char *)p, st.st_size);
+  q = hdr;
+  q = WRITE32BE(q, RUNITD_MAGIC);
+  *q++ = kRunitExecute;
+  q = WRITE32BE(q, namesize);
+  q = WRITE32BE(q, progsize);
+  q = WRITE32BE(q, crc);
+  q = mempcpy(q, name, namesize);
+  assert(hdrsize == q - hdr);
+  okall = true;
+  okall &= Send(tmpfd, hdr, hdrsize);
+  okall &= Send(tmpfd, p, progsize);
+  CHECK_NE(-1, munmap(p, st.st_size));
+  CHECK_NE(-1, close(fd));
+  return okall;
+}
+
+void RelayRequest(void) {
+  int i, rc, have, transferred;
+  char *buf = gc(malloc(PIPE_BUF));
+  for (transferred = 0;;) {
+    rc = read(13, buf, PIPE_BUF);
+    CHECK_NE(-1, rc);
+    have = rc;
+    if (!rc) break;
+    transferred += have;
+    for (i = 0; i < have; i += rc) {
+      rc = mbedtls_ssl_write(&ezssl, buf + i, have - i);
+      if (rc <= 0) {
+        EzTlsDie("relay request failed", rc);
+      }
+    }
   }
-  CHECK_NE(-1, shutdown(g_sock, SHUT_WR));
+  CHECK_NE(0, transferred);
+  rc = EzTlsFlush(&ezbio, 0, 0);
+  if (rc < 0) {
+    EzTlsDie("relay request failed to flush", rc);
+  }
+  close(13);
+}
+
+bool Recv(char *p, int n) {
+  int i, rc;
+  for (i = 0; i < n; i += rc) {
+    do rc = mbedtls_ssl_read(&ezssl, p + i, n - i);
+    while (rc == MBEDTLS_ERR_SSL_WANT_READ);
+    if (!rc) return false;
+    if (rc < 0) {
+      if (rc == MBEDTLS_ERR_NET_CONN_RESET) {
+        EzTlsDie("connection reset", rc);
+      } else {
+        EzTlsDie("read response failed", rc);
+      }
+    }
+  }
+  return true;
 }
 
 int ReadResponse(void) {
-  int res;
-  uint32_t size;
-  ssize_t rc;
-  size_t n, m;
-  unsigned char *p;
-  enum RunitCommand cmd;
-  static long backoff;
-  static unsigned char msg[512];
-  res = -1;
+  int exitcode;
+  struct timespec start = timespec_real();
   for (;;) {
-    if ((rc = recv(g_sock, msg, sizeof(msg), 0)) == -1) {
-      CHECK_EQ(ECONNRESET, errno);
-      usleep((backoff = (backoff + 1000) * 2));
+    char msg[5];
+    if (!Recv(msg, 5)) {
+      WARNF("%s didn't report status of %s", g_hostname, g_prog);
+      exitcode = 200;
       break;
     }
-    p = &msg[0];
-    n = (size_t)rc;
-    if (!n) break;
-    do {
-      CHECK_GE(n, 4 + 1);
-      CHECK_EQ(RUNITD_MAGIC, READ32BE(p));
-      p += 4, n -= 4;
-      cmd = *p++, n--;
-      switch (cmd) {
-        case kRunitExit:
-          CHECK_GE(n, 1);
-          if ((res = *p & 0xff)) {
-            WARNF("%s on %s exited with %d", g_prog, g_hostname, res);
-          }
-          goto drop;
-        case kRunitStderr:
-          CHECK_GE(n, 4);
-          size = READ32BE(p), p += 4, n -= 4;
-          while (size) {
-            if (n) {
-              CHECK_NE(-1, (rc = write(STDERR_FILENO, p, min(n, size))));
-              CHECK_NE(0, (m = (size_t)rc));
-              p += m, n -= m, size -= m;
-            } else {
-              CHECK_NE(-1, (rc = recv(g_sock, msg, sizeof(msg), 0)));
-              p = &msg[0];
-              n = (size_t)rc;
-              if (!n) goto drop;
-            }
-          }
-          break;
-        default:
-          __die();
+    if (READ32BE(msg) != RUNITD_MAGIC) {
+      WARNF("%s sent corrupted data stream after running %s", g_hostname,
+            g_prog);
+      exitcode = 201;
+      break;
+    }
+    if (msg[4] == kRunitExit) {
+      if (!Recv(msg, 1)) {
+      TruncatedMessage:
+        WARNF("%s sent truncated message running %s", g_hostname, g_prog);
+        exitcode = 202;
+        break;
       }
-    } while (n);
+      exitcode = *msg & 255;
+      if (exitcode) {
+        WARNF("%s says %s exited with %d", g_hostname, g_prog, exitcode);
+      } else {
+        VERBOSEF("%s says %s exited with %d", g_hostname, g_prog, exitcode);
+      }
+      mbedtls_ssl_close_notify(&ezssl);
+      break;
+    } else if (msg[4] == kRunitStdout || msg[4] == kRunitStderr) {
+      if (!Recv(msg, 4)) goto TruncatedMessage;
+      int n = READ32BE(msg);
+      char *s = malloc(n);
+      if (!Recv(s, n)) goto TruncatedMessage;
+      write(2, s, n);
+      free(s);
+    } else {
+      WARNF("%s sent message with unknown command %d after running %s",
+            g_hostname, msg[4], g_prog);
+      exitcode = 203;
+      break;
+    }
   }
-drop:
-  CHECK_NE(-1, close(g_sock));
-  return res;
+  execute_latency = timespec_tomicros(timespec_sub(timespec_real(), start));
+  close(g_sock);
+  return exitcode;
 }
 
 int RunOnHost(char *spec) {
-  int rc;
+  int err;
   char *p;
   for (p = spec; *p; ++p) {
     if (*p == ':') *p = ' ';
   }
-  CHECK_GE(sscanf(spec, "%100s %hu %hu", g_hostname, &g_runitdport, &g_sshport),
-           1);
+  int got =
+      sscanf(spec, "%100s %hu %hu", g_hostname, &g_runitdport, &g_sshport);
+  if (got < 1) {
+    kprintf("what on earth %#s -> %d\n", spec, got);
+    fprintf(stderr, "what on earth %#s -> %d\n", spec, got);
+    exit(1);
+  }
   if (!strchr(g_hostname, '.')) strcat(g_hostname, ".test.");
-  do {
+  DEBUGF("connecting to %s port %d", g_hostname, g_runitdport);
+  for (;;) {
     Connect();
-    SendRequest();
-  } while ((rc = ReadResponse()) == -1);
+    EzFd(g_sock);
+    struct timespec start = timespec_real();
+    err = EzHandshake2();
+    handshake_latency = timespec_tomicros(timespec_sub(timespec_real(), start));
+    if (!err) break;
+    WARNF("handshake with %s:%d failed -0x%04x (%s)",  //
+          g_hostname, g_runitdport, err, GetTlsError(err));
+    close(g_sock);
+    return 1;
+  }
+  RelayRequest();
+  int rc = ReadResponse();
+  kprintf("%s on %-16s %'8ld µs %'8ld µs %'11d µs\n", basename(g_prog),
+          g_hostname, connect_latency, handshake_latency, execute_latency);
   return rc;
 }
 
@@ -411,71 +391,119 @@ bool IsParallelBuild(void) {
   return (makeflags = getenv("MAKEFLAGS")) && strstr(makeflags, "-j");
 }
 
-bool ShouldRunInParralel(void) {
+bool ShouldRunInParallel(void) {
   return !IsWindows() && IsParallelBuild();
 }
 
-int RunRemoteTestsInParallel(char *hosts[], int count) {
+int SpawnSubprocesses(int argc, char *argv[]) {
   sigset_t chldmask, savemask;
-  int i, rc, ws, pid, *pids, exitcode;
+  int i, ws, pid, *pids, exitcode;
   struct sigaction ignore, saveint, savequit;
-  pids = calloc(count, sizeof(char *));
+  char *args[5] = {argv[0], argv[1], argv[2]};
+
+  // create compressed network request ahead of time
+  const char *tmpdir = firstnonnull(getenv("TMPDIR"), "/tmp");
+  char *tpath = gc(xasprintf("%s/runit.XXXXXX", tmpdir));
+  int tmpfd = mkstemp(tpath);
+  CHECK_NE(-1, tmpfd);
+  CHECK(SendRequest(tmpfd));
+  CHECK_NE(-1, close(tmpfd));
+
+  // fork off 𝑛 subprocesses for each host on which we run binary.
+  // what's important here is htop in tree mode will report like:
+  //
+  //     runit.com xnu freebsd netbsd
+  //     ├─runit.com xnu
+  //     ├─runit.com freebsd
+  //     └─runit.com netbsd
+  //
+  // That way when one hangs, it's easy to know what o/s it is.
+  argc -= 3;
+  argv += 3;
+  exitcode = 0;
+  pids = calloc(argc, sizeof(int));
   ignore.sa_flags = 0;
   ignore.sa_handler = SIG_IGN;
-  LOGIFNEG1(sigemptyset(&ignore.sa_mask));
-  LOGIFNEG1(sigaction(SIGINT, &ignore, &saveint));
-  LOGIFNEG1(sigaction(SIGQUIT, &ignore, &savequit));
-  LOGIFNEG1(sigemptyset(&chldmask));
-  LOGIFNEG1(sigaddset(&chldmask, SIGCHLD));
-  LOGIFNEG1(sigprocmask(SIG_BLOCK, &chldmask, &savemask));
-  for (i = 0; i < count; ++i) {
-    CHECK_NE(-1, (pids[i] = fork()));
+  sigemptyset(&ignore.sa_mask);
+  sigaction(SIGINT, &ignore, &saveint);
+  sigaction(SIGQUIT, &ignore, &savequit);
+  sigemptyset(&chldmask);
+  sigaddset(&chldmask, SIGCHLD);
+  sigprocmask(SIG_BLOCK, &chldmask, &savemask);
+  for (i = 0; i < argc; ++i) {
+    args[3] = argv[i];
+    CHECK_NE(-1, (pids[i] = vfork()));
     if (!pids[i]) {
-      sigaction(SIGINT, &saveint, NULL);
-      sigaction(SIGQUIT, &savequit, NULL);
-      sigprocmask(SIG_SETMASK, &savemask, NULL);
-      _exit(RunOnHost(hosts[i]));
+      dup2(open(tpath, O_RDONLY | O_CLOEXEC), 13);
+      sigaction(SIGINT, &(struct sigaction){0}, 0);
+      sigaction(SIGQUIT, &(struct sigaction){0}, 0);
+      sigprocmask(SIG_SETMASK, &savemask, 0);
+      execve(args[0], args, environ);  // for htop
+      _Exit(127);
     }
   }
-  for (exitcode = 0;;) {
+
+  // wait for children to terminate
+  for (;;) {
     if ((pid = wait(&ws)) == -1) {
       if (errno == EINTR) continue;
       if (errno == ECHILD) break;
       FATALF("wait failed");
     }
-    for (i = 0; i < count; ++i) {
+    for (i = 0; i < argc; ++i) {
       if (pids[i] != pid) continue;
       if (WIFEXITED(ws)) {
-        DEBUGF("%s exited with %d", hosts[i], WEXITSTATUS(ws));
+        if (WEXITSTATUS(ws)) {
+          INFOF("%s exited with %d", argv[i], WEXITSTATUS(ws));
+        } else {
+          DEBUGF("%s exited with %d", argv[i], WEXITSTATUS(ws));
+        }
         if (!exitcode) exitcode = WEXITSTATUS(ws);
       } else {
-        DEBUGF("%s terminated with %s", hosts[i], strsignal(WTERMSIG(ws)));
+        INFOF("%s terminated with %s", argv[i], strsignal(WTERMSIG(ws)));
         if (!exitcode) exitcode = 128 + WTERMSIG(ws);
       }
       break;
     }
   }
-  LOGIFNEG1(sigaction(SIGINT, &saveint, NULL));
-  LOGIFNEG1(sigaction(SIGQUIT, &savequit, NULL));
-  LOGIFNEG1(sigprocmask(SIG_SETMASK, &savemask, NULL));
+  unlink(tpath);
+  sigprocmask(SIG_SETMASK, &savemask, 0);
+  sigaction(SIGQUIT, &savequit, 0);
+  sigaction(SIGINT, &saveint, 0);
   free(pids);
   return exitcode;
 }
 
 int main(int argc, char *argv[]) {
-  showcrashreports();
-  /* __log_level = kLogDebug; */
+  ShowCrashReports();
+  signal(SIGPIPE, SIG_IGN);
+  // mbedtls_debug_threshold = 3;
+  if (getenv("DEBUG")) {
+    __log_level = kLogDebug;
+  }
   if (argc > 1 &&
       (strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0)) {
     ShowUsage(stdout, 0);
-    unreachable;
+    __builtin_unreachable();
   }
-  if (argc < 1 + 2) ShowUsage(stderr, EX_USAGE);
-  CHECK_NOTNULL(commandv(firstnonnull(getenv("SSH"), "ssh"), g_ssh));
+  if (argc < 3) {
+    ShowUsage(stderr, EX_USAGE);
+    __builtin_unreachable();
+  }
   CheckExists((g_runitd = argv[1]));
   CheckExists((g_prog = argv[2]));
-  if (argc == 1 + 2) return 0; /* hosts list empty */
-  g_sshport = 22;
-  g_runitdport = RUNITD_PORT;
-  return RunRemoteTestsInParallel(&argv[3], argc - 3);
+  if (argc == 3) {
+    /* hosts list empty */
+    return 0;
+  } else if (argc == 4) {
+    /* TODO(jart): this is broken */
+    /* single host */
+    SetupPresharedKeySsl(MBEDTLS_SSL_IS_CLIENT, GetRunitPsk());
+    g_sshport = 22;
+    g_runitdport = RUNITD_PORT;
+    return RunOnHost(argv[3]);
+  } else {
+    /* multiple hosts */
+    return SpawnSubprocesses(argc, argv);
+  }
 }

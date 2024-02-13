@@ -1,15 +1,8 @@
-/*
-** $Id: lopcodes.h $
-** Opcodes for Lua virtual machine
-** See Copyright Notice in lua.h
-*/
-
 #ifndef lopcodes_h
 #define lopcodes_h
 
 #include "third_party/lua/llimits.h"
 
-/* clang-format off */
 
 /*===========================================================================
   We assume that instructions are unsigned 32-bit integers.
@@ -226,13 +219,13 @@ OP_SELF,/*	A B C	R[A+1] := R[B]; R[A] := R[B][RK(C):string]	*/
 
 OP_ADDI,/*	A B sC	R[A] := R[B] + sC				*/
 
-OP_ADDK,/*	A B C	R[A] := R[B] + K[C]				*/
-OP_SUBK,/*	A B C	R[A] := R[B] - K[C]				*/
-OP_MULK,/*	A B C	R[A] := R[B] * K[C]				*/
-OP_MODK,/*	A B C	R[A] := R[B] % K[C]				*/
-OP_POWK,/*	A B C	R[A] := R[B] ^ K[C]				*/
-OP_DIVK,/*	A B C	R[A] := R[B] / K[C]				*/
-OP_IDIVK,/*	A B C	R[A] := R[B] // K[C]				*/
+OP_ADDK,/*	A B C	R[A] := R[B] + K[C]:number			*/
+OP_SUBK,/*	A B C	R[A] := R[B] - K[C]:number			*/
+OP_MULK,/*	A B C	R[A] := R[B] * K[C]:number			*/
+OP_MODK,/*	A B C	R[A] := R[B] % K[C]:number			*/
+OP_POWK,/*	A B C	R[A] := R[B] ^ K[C]:number			*/
+OP_DIVK,/*	A B C	R[A] := R[B] / K[C]:number			*/
+OP_IDIVK,/*	A B C	R[A] := R[B] // K[C]:number			*/
 
 OP_BANDK,/*	A B C	R[A] := R[B] & K[C]:integer			*/
 OP_BORK,/*	A B C	R[A] := R[B] | K[C]:integer			*/

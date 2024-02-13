@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -19,6 +19,7 @@
 #include "libc/testlib/testlib.h"
 
 void testlib_clearxmmregisters(void) {
+#ifdef __x86_64__
   asm("pxor\t%xmm0,%xmm0\n\t"
       "pxor\t%xmm1,%xmm1\n\t"
       "pxor\t%xmm2,%xmm2\n\t"
@@ -27,4 +28,5 @@ void testlib_clearxmmregisters(void) {
       "pxor\t%xmm5,%xmm5\n\t"
       "pxor\t%xmm6,%xmm6\n\t"
       "pxor\t%xmm7,%xmm7");
+#endif
 }

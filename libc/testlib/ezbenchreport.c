@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,18 +16,57 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
+#include "libc/intrin/kprintf.h"
 #include "libc/math.h"
-#include "libc/stdio/stdio.h"
-#include "libc/testlib/testlib.h"
-#include "libc/time/time.h"
+#include "libc/runtime/runtime.h"
 
-STATIC_YOINK("strnwidth");
+void __testlib_ezbenchreport(const char *form, double c1, double c2) {
+  __warn_if_powersave();
+  kprintf(" *     %-19s l: %,9luc %,9luns   m: %,9luc %,9luns\n", form,
+          lrint(c1), lrint(c1 / 3), lrint(c2), lrint(c2 / 3));
+}
 
-void __testlib_ezbenchreport(const char *form, uint64_t c1, uint64_t c2) {
-  uint64_t ns1, ns2;
-  ns1 = rintl(ConvertTicksToNanos(c1));
-  ns2 = rintl(ConvertTicksToNanos(c2));
-  (fprintf)(stderr,
-            VEIL("r", "%-30s l: %,10lu𝑐 %,10lu𝑛𝑠   m: %,10lu𝑐 %,10lu𝑛𝑠\n"),
-            form, c1, ns1, c2, ns2);
+void __testlib_ezbenchreport_n(const char *form, char z, size_t n, double c) {
+  long cn, lat;
+  uint64_t bps;
+  char msg[128];
+  __warn_if_powersave();
+  ksnprintf(msg, sizeof(msg), "%s %c=%d", form, z, n);
+  cn = lrint(c / 3);
+  if (!n) {
+    kprintf("\n");
+    kprintf(" *     %-28s", msg);
+    if (cn < 1) {
+      kprintf(" %'9lu %-12s", (int64_t)(cn * 1024), "picoseconds");
+    } else if (cn > 1024) {
+      kprintf(" %'9lu %-12s", (int64_t)(cn / 1024), "microseconds");
+    } else {
+      kprintf(" %'9lu %-12s", (int64_t)cn, "nanoseconds");
+    }
+  } else {
+    kprintf(" *     %-28s", msg);
+    bps = n / cn * 1e9;
+    lat = cn / n;
+    if (lat < 1e-3) {
+      kprintf(" %'9lu %-12s", (int64_t)(lat * 1024 * 1024), "fs/byte");
+    } else if (lat < 1) {
+      kprintf(" %'9lu %-12s", (int64_t)(lat * 1024), "ps/byte");
+    } else if (lat > 1024) {
+      kprintf(" %'9lu %-12s", (int64_t)(lat / 1024), "µs/byte");
+    } else {
+      kprintf(" %'9lu %-12s", (int64_t)lat, "ns/byte");
+    }
+    if (bps < 10 * 1000) {
+      kprintf(" %'9lu b/s", bps);
+    } else if (bps < 10 * 1000 * 1024) {
+      kprintf(" %'9lu kb/s", bps / 1024);
+    } else if (bps < 10ul * 1000 * 1024 * 1024) {
+      kprintf(" %'9lu mb/s", bps / (1024 * 1024));
+    } else if (bps < 10ul * 1000 * 1024 * 1024 * 1024) {
+      kprintf(" %'9lu GB/s", bps / (1024 * 1024 * 1024));
+    } else {
+      kprintf(" %'9lu TB/s", bps / (1024ul * 1024 * 1024 * 1024));
+    }
+  }
+  kprintf("\n", form);
 }

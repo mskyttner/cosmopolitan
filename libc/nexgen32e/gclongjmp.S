@@ -1,5 +1,5 @@
 /*-*- mode:unix-assembly; indent-tabs-mode:t; tab-width:8; coding:utf-8     -*-│
-│vi: set et ft=asm ts=8 sw=8 fenc=utf-8                                     :vi│
+│ vi: set noet ft=asm ts=8 sw=8 fenc=utf-8                                 :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -29,32 +29,40 @@
 //	@assume	system five nexgen32e abi conformant
 //	@see	examples/ctrlc.c
 //	@noreturn
-_gclongjmp:
-	.leafprologue
-	.profilable
-	.weak	__garbage
-	lea	__garbage(%rip),%r12
+	.ftrace1
+gclongjmp:
+	.ftrace2
+#ifdef __x86_64__
+	push	%rbp
+	mov	%rsp,%rbp
+	mov	%fs:0,%r12			// __get_tls()
+	mov	0x18(%r12),%r12			// Tls::garbages
 	test	%r12,%r12
+	jz	0f
+	movl	(%r12),%r13d			// garbages.i
+	test	%r13d,%r13d
 	jnz	.L.unwind.destructors
 0:	jmp	longjmp
 .L.unwind.destructors:
 	push	%rdi
 	push	%rsi
-	mov	(%r12),%r13			# garbage.i
-	mov	16(%r12),%r14			# garbage.p
-	mov	(%rdi),%r15			# jmp_buf[0] is new %rsp
-	shl	$5,%r13
-1:	test	%r13,%r13
-	jz	2f
-	sub	$32,%r13
-	cmp	(%r14,%r13),%r15
-	ja	2f
-	mov	8(%r14,%r13),%rax		# garbage.p[𝑖].fn
-	mov	16(%r14,%r13),%rdi		# garbage.p[𝑖].arg
-	call	*%rax
-	decq	(%r12)
+	mov	8(%r12),%r14			// garbages.p
+	mov	(%rdi),%r15			// jmp_buf[0] is new %rsp
+	shl	$5,%r13				// log2(sizeof(struct Garbage))
+1:	sub	$32,%r13			// 𝑖--
+	js	2f
+	cmp	(%r14,%r13),%r15		// new %rsp > garbages.p[𝑖].frame
+	jbe	2f
+	mov	16(%r14,%r13),%rdi		// garbages.p[𝑖].arg
+	callq	*8(%r14,%r13)			// garbages.p[𝑖].fn
+	decl	(%r12)				// garbages.i--
 	jmp	1b
 2:	pop	%rsi
 	pop	%rdi
 	jmp	0b
-	.endfn	_gclongjmp,globl
+#elif defined(__aarch64__)
+	b	longjmp
+#else
+#error "unsupported architecture"
+#endif /* __x86_64__ */
+	.endfn	gclongjmp,globl

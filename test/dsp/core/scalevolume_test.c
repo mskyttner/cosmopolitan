@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -22,8 +22,7 @@
 #include "libc/log/check.h"
 #include "libc/macros.internal.h"
 #include "libc/nexgen32e/x86feature.h"
-#include "libc/rand/rand.h"
-#include "libc/runtime/buffer.h"
+#include "libc/stdio/rand.h"
 #include "libc/testlib/ezbench.h"
 #include "libc/testlib/testlib.h"
 
@@ -146,7 +145,7 @@ TEST(scalevolume, testSmallestScale_justSaturates) {
 //   - ~200ns w/ -O3 -march=skylake MODE=rel
 
 void randomizeaudio(void) {
-  rngset(pcm, sizeof(pcm), rand64, -1);
+  rngset(pcm, sizeof(pcm), _rand64, -1);
 }
 
 void scalevolume_pure(int amt) {

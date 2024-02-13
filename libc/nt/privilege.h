@@ -32,7 +32,6 @@
 #define kNtSePrivilegeRemoved          0x00000004u
 #define kNtSePrivilegeUsedForAccess    0x80000000u
 
-#if !(__ASSEMBLER__ + __LINKER__ + 0)
 COSMOPOLITAN_C_START_
 
 bool32 LookupPrivilegeValue(const char16_t *opt_lpSystemName,
@@ -44,6 +43,8 @@ bool32 AdjustTokenPrivileges(int64_t TokenHandle, bool32 DisableAllPrivileges,
                              struct NtTokenPrivileges *opt_out_PreviousState,
                              uint32_t *opt_out_ReturnLength);
 
+bool32 ImpersonateSelf(int kNtSecurityImpersonationLevel);
+bool32 RevertToSelf(void);
+
 COSMOPOLITAN_C_END_
-#endif /* !(__ASSEMBLER__ + __LINKER__ + 0) */
 #endif /* COSMOPOLITAN_LIBC_NT_PRIVILEGE_H_ */

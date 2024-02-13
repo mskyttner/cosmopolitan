@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2018 Intel Corporation                                             │
 │ Copyright 2019 Justine Alexandra Roberts Tunney                              │
@@ -16,7 +16,7 @@
 │ See the License for the specific language governing permissions and          │
 │ limitations under the License.                                               │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "third_party/xed/x86.h"
+#include "third_party/xed/x86isa.h"
 
 asm(".ident\t\"\\n\\n\
 Xed (Apache 2.0)\\n\
@@ -36,7 +36,7 @@ asm(".include \"libc/disclaimer.inc\"");
  * example, 0x2800000ul was calculated as: 1UL<<(XED_ISA_SET_I86-64) |
  * 1UL<<(XED_ISA_SET_LAHF-64).
  */
-const uint64_t kXedChipFeatures[XED_CHIP_LAST][3] /* clang-format off */ = {
+const uint64_t kXedChipFeatures[XED_CHIP_LAST][3] = {
   {0,                   0,                  0,     },
   {0,                   0x02800000,         0,     },  /*I86*/
   {0,                   0x02800000,         0x02000},  /*I86FP*/
@@ -89,4 +89,4 @@ const uint64_t kXedChipFeatures[XED_CHIP_LAST][3] /* clang-format off */ = {
   {0xfffffffc3f3fffec,  0xffffebff5fffdfb9, 0x7b79e},  /*ICEL..SERVER*/
   {0xfffffffc3f3fffec,  0xffdffbf75fffdfbb, 0x7a79e},  /*FUTURE*/
   {0xfffffffffffffffe,  0xffffffffffffffff, 0x7ffff}   /*ALL*/
-} /* clang-format on */;
+};

@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,24 +16,29 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/bits/bits.h"
-#include "libc/bits/safemacros.internal.h"
 #include "libc/calls/calls.h"
 #include "libc/calls/struct/stat.h"
-#include "libc/fmt/conv.h"
+#include "libc/fmt/libgen.h"
+#include "libc/fmt/wintime.internal.h"
+#include "libc/intrin/kprintf.h"
+#include "libc/intrin/safemacros.internal.h"
 #include "libc/log/check.h"
 #include "libc/log/log.h"
+#include "libc/mem/gc.h"
 #include "libc/mem/mem.h"
 #include "libc/nexgen32e/crc32.h"
 #include "libc/nt/struct/filetime.h"
-#include "libc/runtime/gc.internal.h"
+#include "libc/serialize.h"
+#include "libc/stdckdint.h"
 #include "libc/stdio/stdio.h"
+#include "libc/stdio/sysparam.h"
 #include "libc/str/str.h"
 #include "libc/sysv/consts/map.h"
 #include "libc/sysv/consts/o.h"
 #include "libc/sysv/consts/prot.h"
-#include "libc/x/x.h"
-#include "libc/zip.h"
+#include "libc/x/xasprintf.h"
+#include "libc/x/xiso8601.h"
+#include "libc/zip.internal.h"
 #include "tool/decode/lib/asmcodegen.h"
 #include "tool/decode/lib/disassemblehex.h"
 #include "tool/decode/lib/flagger.h"
@@ -46,22 +51,23 @@
  * @fileoverview Zip File Disassembler.
  */
 
-nodiscard char *FormatDosDate(uint16_t dosdate) {
+uint8_t *map;
+
+static __wur char *FormatDosDate(uint16_t dosdate) {
   return xasprintf("%04u-%02u-%02u", ((dosdate >> 9) & 0b1111111) + 1980,
                    (dosdate >> 5) & 0b1111, dosdate & 0b11111);
 }
 
-nodiscard char *FormatDosTime(uint16_t dostime) {
+static __wur char *FormatDosTime(uint16_t dostime) {
   return xasprintf("%02u:%02u:%02u", (dostime >> 11) & 0b11111,
                    (dostime >> 5) & 0b111111, (dostime << 1) & 0b111110);
 }
 
 void AdvancePosition(uint8_t *map, size_t *pos, size_t off) {
-  CHECK_GE(off, *pos);
   if (off > *pos) {
-    printf("\n/\t<%s>\n", "LIMBO");
-    disassemblehex(&map[*pos], off - *pos, stdout);
-    printf("/\t</%s>\n", "LIMBO");
+    /* printf("\n/\t<%s>\n", "LIMBO"); */
+    /* disassemblehex(&map[*pos], off - *pos, stdout); */
+    /* printf("/\t</%s>\n", "LIMBO"); */
   }
   *pos = off;
 }
@@ -94,12 +100,9 @@ void ShowCompressionMethod(uint16_t compressmethod) {
 
 void ShowNtfs(uint8_t *ntfs, size_t n) {
   struct timespec mtime, atime, ctime;
-  mtime = FileTimeToTimeSpec(
-      (struct NtFileTime){READ32LE(ntfs + 8), READ32LE(ntfs + 12)});
-  atime = FileTimeToTimeSpec(
-      (struct NtFileTime){READ32LE(ntfs + 16), READ32LE(ntfs + 20)});
-  ctime = FileTimeToTimeSpec(
-      (struct NtFileTime){READ32LE(ntfs + 24), READ32LE(ntfs + 28)});
+  mtime = WindowsTimeToTimeSpec(READ64LE(ntfs + 8));
+  atime = WindowsTimeToTimeSpec(READ64LE(ntfs + 16));
+  ctime = WindowsTimeToTimeSpec(READ64LE(ntfs + 24));
   show(".long", gc(xasprintf("%d", READ32LE(ntfs))), "ntfs reserved");
   show(".short", gc(xasprintf("0x%04x", READ16LE(ntfs + 4))),
        "ntfs attribute tag value #1");
@@ -148,21 +151,71 @@ void ShowExtendedTimestamp(uint8_t *p, size_t n, bool islocal) {
   }
 }
 
-void ShowZip64(uint8_t *p, size_t n, bool islocal) {
-  if (n >= 8) {
-    show(".quad", gc(xasprintf("%lu", READ64LE(p))),
-         gc(xasprintf("uncompressed size (%,ld)", READ64LE(p))));
+void ShowZip64(uint8_t *lf, uint8_t *p, size_t n, bool islocal) {
+  int i = 0;
+
+  uint32_t uncompsize;
+  if (islocal) {
+    uncompsize = ZIP_LFILE_UNCOMPRESSEDSIZE(lf);
+  } else {
+    uncompsize = ZIP_CFILE_UNCOMPRESSEDSIZE(lf);
   }
-  if (n >= 16) {
-    show(".quad", gc(xasprintf("%lu", READ64LE(p + 8))),
-         gc(xasprintf("compressed size (%,ld)", READ64LE(p + 8))));
+  if (uncompsize == 0xffffffffu) {
+    if (i + 8 <= n) {
+      show(".quad", gc(xasprintf("0x%lx", READ64LE(p + i))),
+           gc(xasprintf("uncompressed size (%,ld)", READ64LE(p + i))));
+    } else {
+      kprintf("/\tWARNING: ZIP64 EXTRA MISSING UNCOMPRESSED SIZE\n");
+    }
+    i += 8;
   }
-  if (n >= 24) {
-    show(".quad", gc(xasprintf("%lu", READ64LE(p + 16))),
-         gc(xasprintf("lfile hdr offset (%,ld)", READ64LE(p + 16))));
+
+  uint32_t compsize;
+  if (islocal) {
+    compsize = ZIP_LFILE_COMPRESSEDSIZE(lf);
+  } else {
+    compsize = ZIP_CFILE_COMPRESSEDSIZE(lf);
   }
-  if (n >= 28) {
-    show(".long", gc(xasprintf("%u", READ32LE(p + 24))), "disk number");
+  if (compsize == 0xffffffffu) {
+    if (i + 8 <= n) {
+      show(".quad", gc(xasprintf("0x%lx", READ64LE(p + i))),
+           gc(xasprintf("compressed size (%,ld)", READ64LE(p + i))));
+    } else {
+      kprintf("/\tWARNING: ZIP64 EXTRA MISSING COMPRESSED SIZE\n");
+    }
+    i += 8;
+  }
+
+  if (!islocal) {
+    uint32_t offset;
+    offset = ZIP_CFILE_OFFSET(lf);
+    if (offset == 0xffffffffu) {
+      if (i + 8 <= n) {
+        show(".quad", gc(xasprintf("0x%lx", READ64LE(p + i))),
+             gc(xasprintf("lfile offset (%,ld)", READ64LE(p + i))));
+      } else {
+        kprintf("/\tWARNING: ZIP64 EXTRA MISSING OFFSET\n");
+      }
+      i += 8;
+    }
+  }
+
+  if (!islocal) {
+    uint16_t disk;
+    disk = ZIP_CFILE_DISK(lf);
+    if (disk == 0xffff) {
+      if (i + 4 <= n) {
+        show(".long", gc(xasprintf("0x%x", READ32LE(p + i))),
+             gc(xasprintf("lfile disk (%,ld)", READ32LE(p + i))));
+      } else {
+        kprintf("/\tWARNING: ZIP64 EXTRA MISSING DISK\n");
+      }
+      i += 8;
+    }
+  }
+
+  if (i != n) {
+    kprintf("/\tWARNING: ZIP64 EXTRA HAS SUPERFLUOUS CONTENT\n");
   }
 }
 
@@ -178,7 +231,7 @@ void ShowInfoZipNewUnixExtra(uint8_t *p, size_t n, bool islocal) {
   }
 }
 
-void ShowExtra(uint8_t *extra, bool islocal) {
+void ShowExtra(uint8_t *lf, uint8_t *extra, bool islocal) {
   switch (ZIP_EXTRA_HEADERID(extra)) {
     case kZipExtraNtfs:
       ShowNtfs(ZIP_EXTRA_CONTENT(extra), ZIP_EXTRA_CONTENTSIZE(extra));
@@ -188,7 +241,7 @@ void ShowExtra(uint8_t *extra, bool islocal) {
                             ZIP_EXTRA_CONTENTSIZE(extra), islocal);
       break;
     case kZipExtraZip64:
-      ShowZip64(ZIP_EXTRA_CONTENT(extra), ZIP_EXTRA_CONTENTSIZE(extra),
+      ShowZip64(lf, ZIP_EXTRA_CONTENT(extra), ZIP_EXTRA_CONTENTSIZE(extra),
                 islocal);
       break;
     case kZipExtraInfoZipNewUnixExtra:
@@ -214,7 +267,8 @@ void ShowExternalAttributes(uint8_t *cf) {
   }
 }
 
-void ShowExtras(uint8_t *extras, uint16_t extrassize, bool islocal) {
+void ShowExtras(uint8_t *lf, uint8_t *extras, uint16_t extrassize,
+                bool islocal) {
   int i;
   bool first;
   uint8_t *p, *pe;
@@ -233,7 +287,7 @@ void ShowExtras(uint8_t *extras, uint16_t extrassize, bool islocal) {
         first = false;
         printf("%d:", (i + 1) * 10);
       }
-      ShowExtra(p, islocal);
+      ShowExtra(lf, p, islocal);
       printf("%d:", (i + 2) * 10);
     }
   }
@@ -241,8 +295,8 @@ void ShowExtras(uint8_t *extras, uint16_t extrassize, bool islocal) {
 }
 
 void ShowLocalFileHeader(uint8_t *lf, uint16_t idx) {
-  printf("\n/\t%s #%hu (%zu %s)\n", "local file", idx + 1,
-         ZIP_LFILE_HDRSIZE(lf), "bytes");
+  printf("\n/\t%s #%hu (%zu %s @ %#lx)\n", "local file", idx + 1,
+         ZIP_LFILE_HDRSIZE(lf), "bytes", lf - map);
   show(".ascii", format(b1, "%`'.*s", 4, lf), "magic");
   show(".byte",
        firstnonnull(findnamebyid(kZipEraNames, ZIP_LFILE_VERSIONNEED(lf)),
@@ -281,7 +335,7 @@ void ShowLocalFileHeader(uint8_t *lf, uint16_t idx) {
               gc(strndup(ZIP_LFILE_NAME(lf), ZIP_LFILE_NAMESIZE(lf)))),
        "name");
   printf("1:");
-  ShowExtras(ZIP_LFILE_EXTRA(lf), ZIP_LFILE_EXTRASIZE(lf), true);
+  ShowExtras(lf, ZIP_LFILE_EXTRA(lf), ZIP_LFILE_EXTRASIZE(lf), true);
   printf("2:");
   /* disassemblehex(ZIP_LFILE_CONTENT(lf), ZIP_LFILE_COMPRESSEDSIZE(lf),
    * stdout); */
@@ -289,8 +343,8 @@ void ShowLocalFileHeader(uint8_t *lf, uint16_t idx) {
 }
 
 void ShowCentralFileHeader(uint8_t *cf) {
-  printf("\n/\t%s (%zu %s)\n", "central directory file header",
-         ZIP_CFILE_HDRSIZE(cf), "bytes");
+  printf("\n/\t%s (%zu %s @ %#lx)\n", "central directory file header",
+         ZIP_CFILE_HDRSIZE(cf), "bytes", cf - map);
   show(".ascii", format(b1, "%`'.*s", 4, cf), "magic");
   show(".byte", gc(xasprintf("%d", ZIP_CFILE_VERSIONMADE(cf))),
        "zip version made");
@@ -338,7 +392,7 @@ void ShowCentralFileHeader(uint8_t *cf) {
   if (ZIP_CFILE_OFFSET(cf) == 0xFFFFFFFF) {
     show(".long", "0xFFFFFFFF", "lfile hdr offset (zip64)");
   } else {
-    show(".long", format(b1, "%u", ZIP_CFILE_OFFSET(cf)), "lfile hdr offset");
+    show(".long", format(b1, "0x%x", ZIP_CFILE_OFFSET(cf)), "lfile hdr offset");
   }
   printf("0:");
   show(".ascii",
@@ -346,7 +400,7 @@ void ShowCentralFileHeader(uint8_t *cf) {
               gc(strndup(ZIP_CFILE_NAME(cf), ZIP_CFILE_NAMESIZE(cf)))),
        "name");
   printf("1:");
-  ShowExtras(ZIP_CFILE_EXTRA(cf), ZIP_CFILE_EXTRASIZE(cf), false);
+  ShowExtras(cf, ZIP_CFILE_EXTRA(cf), ZIP_CFILE_EXTRASIZE(cf), false);
   printf("2:");
   show(".ascii",
        format(b1, "%`'.*s", ZIP_CFILE_COMMENTSIZE(cf), ZIP_CFILE_COMMENT(cf)),
@@ -355,8 +409,8 @@ void ShowCentralFileHeader(uint8_t *cf) {
 }
 
 void ShowCentralDirHeader32(uint8_t *cd) {
-  printf("\n/\t%s (%zu %s)\n", "end of central directory header",
-         ZIP_CDIR_HDRSIZE(cd), "bytes");
+  printf("\n/\t%s (%zu %s @ %#lx)\n", "end of central directory header",
+         ZIP_CDIR_HDRSIZE(cd), "bytes", cd - map);
   show(".ascii", format(b1, "%`'.*s", 4, cd), "magic");
   show(".short", format(b1, "%hd", ZIP_CDIR_DISK(cd)), "disk");
   show(".short", format(b1, "%hd", ZIP_CDIR_STARTINGDISK(cd)), "startingdisk");
@@ -364,7 +418,7 @@ void ShowCentralDirHeader32(uint8_t *cd) {
        "recordsondisk");
   show(".short", format(b1, "%hu", ZIP_CDIR_RECORDS(cd)), "records");
   show(".long", format(b1, "%u", ZIP_CDIR_SIZE(cd)), "size");
-  show(".long", format(b1, "%u", ZIP_CDIR_OFFSET(cd)), "cfile hdrs offset");
+  show(".long", format(b1, "0x%x", ZIP_CDIR_OFFSET(cd)), "cfile hdrs offset");
   show(".short", "1f-0f",
        format(b1, "%s (%hu %s)", "commentsize", ZIP_CDIR_COMMENTSIZE(cd),
               "bytes"));
@@ -374,8 +428,8 @@ void ShowCentralDirHeader32(uint8_t *cd) {
 }
 
 void ShowCentralDirHeader64(uint8_t *cd) {
-  printf("\n/\t%s (%zu %s)\n", "zip64 end of central directory header",
-         ZIP_CDIR64_HDRSIZE(cd), "bytes");
+  printf("\n/\t%s (%zu %s @ %#lx)\n", "zip64 end of central directory header",
+         ZIP_CDIR64_HDRSIZE(cd), "bytes", cd - map);
   show(".ascii", format(b1, "%`'.*s", 4, cd), "magic");
   show(".quad", format(b1, "%lu", ZIP_CDIR64_HDRSIZE(cd) - 12), "hdr size");
   show(".short", format(b1, "%hd", ZIP_CDIR64_VERSIONMADE(cd)), "version made");
@@ -386,7 +440,7 @@ void ShowCentralDirHeader64(uint8_t *cd) {
        "recordsondisk");
   show(".quad", format(b1, "%lu", ZIP_CDIR64_RECORDS(cd)), "records");
   show(".quad", format(b1, "%lu", ZIP_CDIR64_SIZE(cd)), "cdir size");
-  show(".quad", format(b1, "%lu", ZIP_CDIR64_OFFSET(cd)), "cdir offset");
+  show(".quad", format(b1, "0x%lx", ZIP_CDIR64_OFFSET(cd)), "cdir offset");
   printf("0:");
   disassemblehex(ZIP_CDIR64_COMMENT(cd), ZIP_CDIR64_COMMENTSIZE(cd), stdout);
   printf("1:\n");
@@ -395,33 +449,73 @@ void ShowCentralDirHeader64(uint8_t *cd) {
          kZipCdir64LocatorSize, "bytes");
   show(".ascii", format(b1, "%`'.*s", 4, cd), "magic");
   show(".long", format(b1, "%d", READ32LE(cd + 4)), "startingdisk");
-  show(".quad", format(b1, "%lu", READ64LE(cd + 4 + 4)), "eocd64 offset");
+  show(".quad", format(b1, "0x%lx", READ64LE(cd + 4 + 4)), "eocd64 offset");
   show(".long", format(b1, "%d", READ32LE(cd + 4 + 4 + 8)), "totaldisks");
 }
 
+int IsZipEocd32(const uint8_t *p, size_t n, size_t i) {
+  size_t offset;
+  if (i > n || n - i < kZipCdirHdrMinSize) {
+    return kZipErrorEocdOffsetOverflow;
+  }
+  if (READ32LE(p + i) != kZipCdirHdrMagic) {
+    return kZipErrorEocdMagicNotFound;
+  }
+  if (i + ZIP_CDIR_HDRSIZE(p + i) > n) {
+    return kZipErrorEocdSizeOverflow;
+  }
+  if (ZIP_CDIR_DISK(p + i) != ZIP_CDIR_STARTINGDISK(p + i)) {
+    return kZipErrorEocdDiskMismatch;
+  }
+  if (ZIP_CDIR_RECORDSONDISK(p + i) != ZIP_CDIR_RECORDS(p + i)) {
+    return kZipErrorEocdRecordsMismatch;
+  }
+  if (ZIP_CDIR_RECORDS(p + i) * kZipCfileHdrMinSize > ZIP_CDIR_SIZE(p + i)) {
+    return kZipErrorEocdRecordsOverflow;
+  }
+  if (ckd_add(&offset, ZIP_CDIR_OFFSET(p + i), ZIP_CDIR_SIZE(p + i))) {
+    return kZipErrorEocdOffsetSizeOverflow;
+  }
+  if (offset > i) {
+    return kZipErrorCdirOffsetPastEocd;
+  }
+  return kZipOk;
+}
+
 uint8_t *GetZipCdir32(const uint8_t *p, size_t n) {
-  size_t i;
+  int64_t i, e, err;
   if (n >= kZipCdirHdrMinSize) {
     i = n - kZipCdirHdrMinSize;
-    do {
-      if (READ32LE(p + i) == kZipCdirHdrMagic && IsZipCdir32(p, n, i)) {
-        return (/*unconst*/ uint8_t *)(p + i);
+    e = MAX(0, n - 65536);
+    for (; i >= e; --i) {
+      if (READ32LE(p + i) == kZipCdirHdrMagic) {
+        if ((err = IsZipEocd32(p, n, i)) == kZipOk) {
+          return (/*unconst*/ uint8_t *)(p + i);
+        }
+        kprintf("warning: found eocd32 magic at offset 0x%lx that didn't look "
+                "like an eocd32 record\n",
+                i);
       }
-    } while (i--);
+    }
   }
   return NULL;
 }
 
 uint8_t *GetZipCdir64(const uint8_t *p, size_t n) {
-  uint64_t i, j;
+  int64_t e, i, j;
   if (n >= kZipCdir64LocatorSize) {
     i = n - kZipCdir64LocatorSize;
-    do {
-      if (READ32LE(p + i) == kZipCdir64LocatorMagic &&
-          (j = ZIP_LOCATE64_OFFSET(p + i)) + kZipCdir64HdrMinSize <= n) {
-        return p + j;
+    e = MAX(0, n - 65536);
+    for (; i >= e; --i) {
+      if (READ32LE(p + i) == kZipCdir64LocatorMagic) {
+        if ((j = ZIP_LOCATE64_OFFSET(p + i)) + kZipCdir64HdrMinSize <= n) {
+          CHECK_EQ(kZipCdir64HdrMagic, ZIP_CDIR64_MAGIC((uint8_t *)p + j));
+          return (uint8_t *)p + j;
+        }
+        kprintf("warning: found eocd64 locator magic that "
+                "didn't look like an eocd64 locator record\n");
       }
-    } while (i--);
+    }
   }
   return NULL;
 }
@@ -430,11 +524,7 @@ void DisassembleZip(const char *path, uint8_t *p, size_t n) {
   size_t pos;
   uint16_t i;
   static int records;
-  uint8_t *eocd32, *eocd64, *cdir, *cf, *lf, *q;
-  if (endswith(path, ".com.dbg") && (q = memmem(p, n, "MZqFpD", 6))) {
-    n -= q - p;
-    p += q - p;
-  }
+  uint8_t *eocd32, *eocd64, *cdir, *cf, *lf;
   eocd32 = GetZipCdir32(p, n);
   eocd64 = GetZipCdir64(p, n);
   CHECK(eocd32 || eocd64);
@@ -489,9 +579,8 @@ void DisassembleZip(const char *path, uint8_t *p, size_t n) {
 
 int main(int argc, char *argv[]) {
   int fd;
-  uint8_t *map;
   struct stat st;
-  showcrashreports();
+  ShowCrashReports();
   CHECK_EQ(2, argc);
   CHECK_NE(-1, (fd = open(argv[1], O_RDONLY)));
   CHECK_NE(-1, fstat(fd, &st));

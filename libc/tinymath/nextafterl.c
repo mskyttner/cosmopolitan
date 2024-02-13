@@ -1,5 +1,5 @@
-/*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+/*-*- mode:c;indent-tabs-mode:t;c-basic-offset:8;tab-width:8;coding:utf-8   -*-│
+│ vi: set noet ft=c ts=8 sw=8 fenc=utf-8                                   :vi │
 ╚──────────────────────────────────────────────────────────────────────────────╝
 │                                                                              │
 │  Musl Libc                                                                   │
@@ -26,33 +26,23 @@
 │                                                                              │
 ╚─────────────────────────────────────────────────────────────────────────────*/
 #include "libc/math.h"
+#include "libc/tinymath/feval.internal.h"
+#include "libc/tinymath/internal.h"
+#include "libc/tinymath/ldshape.internal.h"
+#if !(LDBL_MANT_DIG == 53 && LDBL_MAX_EXP == 1024)
 
 asm(".ident\t\"\\n\\n\
 Musl libc (MIT License)\\n\
 Copyright 2005-2014 Rich Felker, et. al.\"");
 asm(".include \"libc/disclaimer.inc\"");
-
-/* clang-format off */
-
-union ldshape {
-	long double f;
-	struct {
-		uint64_t m;
-		uint16_t se;
-	} i;
-};
-
-static inline void force_eval(long double x)
-{
-	volatile long double y;
-	y = x;
-}
+// clang-format off
 
 long double nextafterl(long double x, long double y)
 {
+#if LDBL_MANT_DIG == 64 && LDBL_MAX_EXP == 16384
 	union ldshape ux, uy;
 
-	if (isnan(x) || isnan(y))
+	if (isunordered(x, y))
 		return x + y;
 	if (x == y)
 		return y;
@@ -80,6 +70,37 @@ long double nextafterl(long double x, long double y)
 		return x + x;
 	/* raise underflow if ux is subnormal or zero */
 	if ((ux.i.se & 0x7fff) == 0)
-		force_eval(x*x + ux.f*ux.f);
+		FORCE_EVAL(x*x + ux.f*ux.f);
 	return ux.f;
+#elif LDBL_MANT_DIG == 113 && LDBL_MAX_EXP == 16384
+	union ldshape ux, uy;
+
+	if (isunordered(x, y))
+		return x + y;
+	if (x == y)
+		return y;
+	ux.f = x;
+	if (x == 0) {
+		uy.f = y;
+		ux.i.lo = 1;
+		ux.i.se = uy.i.se & 0x8000;
+	} else if ((x < y) == !(ux.i.se & 0x8000)) {
+		ux.i2.lo++;
+		if (ux.i2.lo == 0)
+			ux.i2.hi++;
+	} else {
+		if (ux.i2.lo == 0)
+			ux.i2.hi--;
+		ux.i2.lo--;
+	}
+	/* raise overflow if ux is infinite and x is finite */
+	if ((ux.i.se & 0x7fff) == 0x7fff)
+		return x + x;
+	/* raise underflow if ux is subnormal or zero */
+	if ((ux.i.se & 0x7fff) == 0)
+		FORCE_EVAL(x*x + ux.f*ux.f);
+	return ux.f;
+#endif
 }
+
+#endif /* long double is long */

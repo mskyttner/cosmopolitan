@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,10 +16,11 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
+#include "libc/calls/blockcancel.internal.h"
 #include "libc/calls/calls.h"
+#include "libc/calls/struct/timeval.h"
 #include "libc/errno.h"
 #include "libc/sysv/consts/o.h"
-#include "libc/time/time.h"
 
 /**
  * Creates new file or changes modified time on existing one.
@@ -32,9 +33,12 @@
 int touch(const char *file, uint32_t mode) {
   int rc, fd, olderr;
   olderr = errno;
-  if ((rc = utimes(file, NULL)) == -1 && errno == ENOENT) {
+  if ((rc = utimes(file, 0)) == -1 && errno == ENOENT) {
     errno = olderr;
-    if ((fd = open(file, O_CREAT | O_WRONLY, mode)) == -1) return -1;
+    BLOCK_CANCELATION;
+    fd = open(file, O_CREAT | O_WRONLY, mode);
+    ALLOW_CANCELATION;
+    if (fd == -1) return -1;
     return close(fd);
   }
   return rc;

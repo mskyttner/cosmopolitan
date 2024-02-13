@@ -7,62 +7,83 @@
 │   • http://creativecommons.org/publicdomain/zero/1.0/            │
 ╚─────────────────────────────────────────────────────────────────*/
 #endif
+#include "libc/calls/struct/rusage.h"
 #include "libc/calls/calls.h"
 #include "libc/calls/struct/rusage.h"
-#include "libc/log/check.h"
-#include "libc/log/log.h"
-#include "libc/math.h"
+#include "libc/calls/struct/sigaction.h"
+#include "libc/calls/struct/sigset.h"
+#include "libc/calls/struct/timespec.h"
+#include "libc/fmt/itoa.h"
+#include "libc/log/appendresourcereport.internal.h"
 #include "libc/runtime/runtime.h"
+#include "libc/stdio/append.h"
 #include "libc/stdio/stdio.h"
-#include "libc/str/str.h"
-#include "libc/sysv/consts/fileno.h"
-#include "libc/time/time.h"
-
-void Show(const char *name, long measurement, const char *unit) {
-  fprintf(stderr, "%-*s%,*d %s\n", 32, name, 32, measurement, unit);
-}
-
-long TvToNs(struct timeval tv) {
-  return tv.tv_sec * 1000000000 + tv.tv_usec * 1000;
-}
+#include "libc/sysv/consts/sig.h"
 
 int main(int argc, char *argv[]) {
-  int pid, wstatus;
-  long double ts1, ts2;
-  struct rusage rusage;
+
+  const char *prog = argv[0];
+  if (!prog) prog = "rusage";
+
   if (argc < 2) {
-    fprintf(stderr, "Usage: %s PROG [ARGS...]\n", argv[0]);
-    return 1;
+    tinyprint(2, prog, ": missing command\n", NULL);
+    exit(1);
   }
-  memset(&rusage, -1, sizeof(rusage));
-  CHECK_GT(argc, 1);
-  ts1 = nowl();
-  if (!(pid = vfork())) {
+
+  // block process management signals
+  sigset_t mask, orig;
+  sigemptyset(&mask);
+  sigaddset(&mask, SIGINT);
+  sigaddset(&mask, SIGQUIT);
+  sigaddset(&mask, SIGCHLD);
+  sigprocmask(SIG_BLOCK, &mask, &orig);
+
+  struct timespec started = timespec_real();
+
+  // launch subprocess
+  int child = fork();
+  if (child == -1) {
+    perror(prog);
+    exit(1);
+  }
+  if (!child) {
+    sigprocmask(SIG_SETMASK, &orig, 0);
     execvp(argv[1], argv + 1);
-    abort();
+    _Exit(127);
   }
-  CHECK_NE(-1, wait4(pid, &wstatus, 0, &rusage));
-  ts2 = nowl();
-  Show("wall time", lroundl((ts2 - ts1) * 1e9l), "ns");
-  Show("user time", TvToNs(rusage.ru_utime), "ns");
-  Show("sys time", TvToNs(rusage.ru_stime), "ns");
-  Show("maximum resident set size", rusage.ru_maxrss, "");
-  Show("integral shared memory size", rusage.ru_ixrss, "");
-  Show("integral unshared data size", rusage.ru_idrss, "");
-  Show("integral unshared stack size", rusage.ru_isrss, "");
-  Show("minor page faults", rusage.ru_minflt, "");
-  Show("major page faults", rusage.ru_majflt, "");
-  Show("swaps", rusage.ru_nswap, "");
-  Show("block input ops", rusage.ru_inblock, "");
-  Show("block output ops", rusage.ru_oublock, "");
-  Show("ipc messages sent", rusage.ru_msgsnd, "");
-  Show("ipc messages received", rusage.ru_msgrcv, "");
-  Show("signals received", rusage.ru_nsignals, "");
-  Show("voluntary context switches", rusage.ru_nvcsw, "");
-  Show("involuntary context switches", rusage.ru_nivcsw, "");
-  if (WIFEXITED(wstatus)) {
-    return WEXITSTATUS(wstatus);
-  } else {
-    return 128 + WTERMSIG(wstatus);
+
+  // wait for subprocess
+  int ws;
+  struct rusage ru;
+  struct sigaction ignore;
+  ignore.sa_flags = 0;
+  ignore.sa_handler = SIG_IGN;
+  sigemptyset(&ignore.sa_mask);
+  sigaction(SIGINT, &ignore, 0);
+  sigaction(SIGQUIT, &ignore, 0);
+  if (wait4(child, &ws, 0, &ru) == -1) {
+    perror(prog);
+    exit(1);
   }
+
+  // compute wall time
+  char strmicros[27];
+  struct timespec ended = timespec_real();
+  struct timespec elapsed = timespec_sub(ended, started);
+  FormatInt64Thousands(strmicros, timespec_tomicros(elapsed));
+
+  // show report
+  char *b = 0;
+  appends(&b, "took ");
+  appends(&b, strmicros);
+  appends(&b, "µs wall time\n");
+  AppendResourceReport(&b, &ru, "\n");
+  write(2, b, appendz(b).i);
+
+  // propagate status
+  if (WIFSIGNALED(ws)) {
+    signal(WTERMSIG(ws), SIG_DFL);
+    raise(WTERMSIG(ws));
+  }
+  return WEXITSTATUS(ws);
 }

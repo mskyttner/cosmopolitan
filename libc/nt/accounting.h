@@ -4,7 +4,6 @@
 #include "libc/nt/struct/iocounters.h"
 #include "libc/nt/struct/memorystatusex.h"
 #include "libc/nt/thunk/msabi.h"
-#if !(__ASSEMBLER__ + __LINKER__ + 0)
 COSMOPOLITAN_C_START_
 /*                            ░░░░
                        ▒▒▒░░░▒▒▒▒▒▒▒▓▓▓░
@@ -31,10 +30,14 @@ COSMOPOLITAN_C_START_
 │ cosmopolitan § new technology » accounting                               ─╬─│┼
 ╚────────────────────────────────────────────────────────────────────────────│*/
 
+uint32_t GetMaximumProcessorCount(uint16_t GroupNumber);
 int GetUserName(char16_t (*buf)[257], uint32_t *in_out_size);
 bool32 GlobalMemoryStatusEx(struct NtMemoryStatusEx *lpBuffer);
 int32_t GetExitCodeProcess(int64_t hProcess, uint32_t *lpExitCode);
 int32_t GetProcessHandleCount(int64_t hProcess, uint32_t *pdwHandleCount);
+bool32 GetSystemTimes(struct NtFileTime *opt_out_lpIdleTime,
+                      struct NtFileTime *opt_out_lpKernelTime,
+                      struct NtFileTime *opt_out_lpUserTime);
 bool32 GetProcessTimes(int64_t hProcess,
                        struct NtFileTime *out_lpCreationFileTime,
                        struct NtFileTime *out_lpExitFileTime,
@@ -66,5 +69,4 @@ int32_t SetProcessWorkingSetSizeEx(int64_t hProcess,
 #include "libc/nt/thunk/accounting.inc"
 #endif /* ShouldUseMsabiAttribute() */
 COSMOPOLITAN_C_END_
-#endif /* !(__ASSEMBLER__ + __LINKER__ + 0) */
 #endif /* COSMOPOLITAN_LIBC_NT_ACCOUNTING_H_ */

@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -23,9 +23,9 @@
  *
  * 𝑑 and 𝑠 must not overlap unless 𝑑 ≤ 𝑠.
  *
- * @param 𝑑 is destination memory
- * @param 𝑠 is a NUL-terminated string
- * @return original dest
+ * @param d is destination memory
+ * @param s is a NUL-terminated string
+ * @return original d
  * @asyncsignalsafe
  */
 wchar_t *wcscpy(wchar_t *d, const wchar_t *s) {

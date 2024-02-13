@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -30,5 +30,8 @@ int wcscmp(const wchar_t *a, const wchar_t *b) {
   size_t i = 0;
   if (a == b) return 0;
   while (a[i] == b[i] && b[i]) ++i;
-  return (unsigned)a[i] - (unsigned)b[i];
+  return (int)a[i] < (int)b[i] ? -1 : (int)a[i] > (int)b[i];
 }
+
+__weak_reference(wcscmp, wcscoll);
+__weak_reference(wcscmp, wcscoll_l);

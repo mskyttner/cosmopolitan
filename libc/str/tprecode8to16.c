@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -24,9 +24,9 @@
 #include "libc/str/thompike.h"
 #include "libc/str/utf16.h"
 
-/* 34x speedup for ascii */
-static inline noasan axdx_t tprecode8to16_sse2(char16_t *dst, size_t dstsize,
-                                               const char *src, axdx_t r) {
+// 34x speedup for ascii
+static inline axdx_t tprecode8to16_sse2(char16_t *dst, size_t dstsize,
+                                        const char *src, axdx_t r) {
   uint8_t v1[16], v2[16], vz[16];
   memset(vz, 0, 16);
   while (r.ax + 16 < dstsize) {
@@ -47,24 +47,27 @@ static inline noasan axdx_t tprecode8to16_sse2(char16_t *dst, size_t dstsize,
  * Transcodes UTF-8 to UTF-16.
  *
  * This is a low-level function intended for the core runtime. Use
- * utf8toutf16() for a much better API that uses malloc().
+ * utf8to16() for a much better API that uses malloc().
  *
  * @param dst is output buffer
  * @param dstsize is shorts in dst
  * @param src is NUL-terminated UTF-8 input string
  * @return ax shorts written excluding nul
  * @return dx index of character after nul word in src
+ * @asyncsignalsafe
  */
 axdx_t tprecode8to16(char16_t *dst, size_t dstsize, const char *src) {
   axdx_t r;
   unsigned w;
-  int x, y, a, b, i, n;
+  int x, a, b, i, n;
   r.ax = 0;
   r.dx = 0;
   for (;;) {
-    if (!IsTiny() && !((uintptr_t)(src + r.dx) & 15)) {
+#if defined(__x86_64__) && !IsModeDbg()
+    if (!((uintptr_t)(src + r.dx) & 15)) {
       r = tprecode8to16_sse2(dst, dstsize, src, r);
     }
+#endif
     x = src[r.dx++] & 0377;
     if (x >= 0300) {
       a = ThomPikeByte(x);

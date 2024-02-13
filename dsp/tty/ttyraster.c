@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -22,8 +22,7 @@
 #include "dsp/tty/ttyrgb.h"
 #include "dsp/tty/windex.h"
 #include "libc/assert.h"
-#include "libc/bits/bits.h"
-#include "libc/bits/safemacros.internal.h"
+#include "libc/intrin/safemacros.internal.h"
 #include "libc/limits.h"
 #include "libc/log/check.h"
 #include "libc/log/log.h"
@@ -609,7 +608,7 @@ static struct Pick PickBlockUnicodeAnsi(struct TtyRgb tl, struct TtyRgb tr,
   struct TtyRgb tr2 = GetQuant(tr);
   struct TtyRgb bl2 = GetQuant(bl);
   struct TtyRgb br2 = GetQuant(br);
-  unsigned i, p1, p2;
+  unsigned p1, p2;
   uint16_t picks1[96] forcealign(32);
   uint16_t picks2[32] forcealign(32);
   memset(picks1, 0x79, sizeof(picks1));
@@ -628,15 +627,6 @@ static struct Pick PickBlockUnicodeTrue(struct TtyRgb tl, struct TtyRgb tr,
   memset(picks, 0x79, sizeof(picks));
   PickUnicode(picks, tl, tr, bl, br, tl, tr, bl, br);
   i = windex(picks, 96);
-  if (i >= 88) {
-    unsigned j;
-    fprintf(stderr, "uint16_t picks[96] = {");
-    for (j = 0; j < 96; ++j) {
-      fprintf(stderr, "%3d,", picks[j]);
-    }
-    fprintf(stderr, "}\n");
-  }
-  CHECK_LT(i, 88);
   return kPicksUnicode[i];
 }
 
@@ -646,7 +636,7 @@ static struct Pick PickBlockCp437Ansi(struct TtyRgb tl, struct TtyRgb tr,
   struct TtyRgb tr2 = GetQuant(tr);
   struct TtyRgb bl2 = GetQuant(bl);
   struct TtyRgb br2 = GetQuant(br);
-  unsigned i, p1, p2;
+  unsigned p1, p2;
   uint16_t picks1[32] forcealign(32);
   uint16_t picks2[32] forcealign(32);
   memset(picks1, 0x79, sizeof(picks1));
@@ -660,7 +650,6 @@ static struct Pick PickBlockCp437Ansi(struct TtyRgb tl, struct TtyRgb tr,
 
 static struct Pick PickBlockCp437True(struct TtyRgb tl, struct TtyRgb tr,
                                       struct TtyRgb bl, struct TtyRgb br) {
-  unsigned i;
   uint16_t picks[32] forcealign(32);
   memset(picks, 0x79, sizeof(picks));
   PickCp437(picks, tl, tr, bl, br, tl, tr, bl, br);
@@ -731,19 +720,19 @@ static bool ChunkEq(struct TtyRgb c[hasatleast 4],
 }
 
 static struct TtyRgb *CopyChunk(struct TtyRgb chunk[hasatleast 4],
-                                const struct TtyRgb *c, size_t n) {
-  chunk[TL] = c[0 + 0];
-  chunk[TR] = c[0 + 1];
-  chunk[BL] = c[n + 0];
-  chunk[BR] = c[n + 1];
+                                const struct TtyRgb *c, size_t xn) {
+  chunk[TL] = c[00 + 0];
+  chunk[TR] = c[00 + 1];
+  chunk[BL] = c[xn + 0];
+  chunk[BR] = c[xn + 1];
   return chunk;
 }
 
-static noinline char *CopyRun(char *v, size_t n,
-                              struct TtyRgb lastchunk[hasatleast 4],
-                              const struct TtyRgb **c, size_t *x,
-                              struct TtyRgb *bg, struct TtyRgb *fg,
-                              struct Glyph *glyph) {
+static dontinline char *CopyRun(char *v, size_t n,
+                                struct TtyRgb lastchunk[hasatleast 4],
+                                const struct TtyRgb **c, size_t *x,
+                                struct TtyRgb *bg, struct TtyRgb *fg,
+                                struct Glyph *glyph) {
   struct TtyRgb chunk[4];
   if (memcmp(glyph, &kGlyphs[1][0], sizeof(*glyph)) == 0) {
     if (!ttyeq(*bg, *fg)) {
@@ -766,17 +755,21 @@ static noinline char *CopyRun(char *v, size_t n,
 /**
  * Maps 2×2 pixel chunks onto ANSI UNICODE cells.
  * @note h/t Nick Black for his quadrant blitting work on notcurses
+ * @note yn and xn need to be even
  */
-char *ttyraster(char *v, const struct TtyRgb *c, size_t yn, size_t n,
+char *ttyraster(char *v, const struct TtyRgb *c, size_t yn, size_t xn,
                 struct TtyRgb bg, struct TtyRgb fg) {
   unsigned y, x;
   struct Pick p;
   struct Glyph glyph;
   struct TtyRgb chun[4], lastchunk[4];
-  for (y = 0; y < yn; y += 2, c += n) {
-    if (y) *v++ = '\r', *v++ = '\n';
-    for (x = 0; x < n; x += 2, c += 2) {
-      CopyChunk(chun, c, n);
+  for (y = 0; y < yn; y += 2, c += xn) {
+    if (y) {
+      v = stpcpy(v, "\e[0m\r\n");
+      v = setbgfg(v, bg, fg);
+    }
+    for (x = 0; x < xn; x += 2, c += 2) {
+      CopyChunk(chun, c, xn);
       if (ttyquant()->alg == kTtyQuantTrue) {
         if (ttyquant()->blocks == kTtyBlocksCp437) {
           p = PickBlockCp437True(chun[TL], chun[TR], chun[BL], chun[BR]);
@@ -794,6 +787,6 @@ char *ttyraster(char *v, const struct TtyRgb *c, size_t yn, size_t n,
       memcpy(lastchunk, chun, sizeof(chun));
     }
   }
-  *v = '\0';
+  v = stpcpy(v, "\e[0m");
   return v;
 }

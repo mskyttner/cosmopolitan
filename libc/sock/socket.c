@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -17,36 +17,41 @@
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
 #include "libc/dce.h"
+#include "libc/intrin/describeflags.internal.h"
+#include "libc/intrin/strace.internal.h"
 #include "libc/sock/internal.h"
 #include "libc/sock/sock.h"
 #include "libc/sysv/consts/af.h"
 #include "libc/sysv/errfuns.h"
 
 /**
- * Creates new system resource for network communication.
+ * Creates new system resource for network communication, e.g.
  *
- * @param family can be AF_UNIX, AF_INET, etc.
+ *     int fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+ *
+ * @param family can be AF_UNIX, AF_INET, AF_INET6, etc.
  * @param type can be SOCK_STREAM (for TCP), SOCK_DGRAM (e.g. UDP), or
  *     SOCK_RAW (IP) so long as IP_HDRINCL was passed to setsockopt();
  *     and additionally, may be or'd with SOCK_NONBLOCK, SOCK_CLOEXEC
  * @param protocol can be IPPROTO_TCP, IPPROTO_UDP, or IPPROTO_ICMP
  * @return socket file descriptor or -1 w/ errno
- * @error ENETDOWN, EPFNOSUPPORT, etc.
+ * @raise EAFNOSUPPORT if `family` isn't supported by system or platform
  * @see libc/sysv/consts.sh
  * @asyncsignalsafe
  */
 int socket(int family, int type, int protocol) {
+  int rc;
   if (family == AF_UNSPEC) {
     family = AF_INET;
-  } else if (family == AF_INET6) {
-    /* Recommend IPv6 on frontend serving infrastructure only. That's
-       what Google Cloud does. It's more secure. It also means poll()
-       will work on Windows, which doesn't allow mixing third layers. */
-    return epfnosupport();
   }
-  if (!IsWindows()) {
-    return sys_socket(family, type, protocol);
+  if (family == -1) {
+    rc = eafnosupport();
+  } else if (!IsWindows()) {
+    rc = sys_socket(family, type, protocol);
   } else {
-    return sys_socket_nt(family, type, protocol);
+    rc = sys_socket_nt(family, type, protocol);
   }
+  STRACE("socket(%s, %s, %s) → %d% lm", DescribeSocketFamily(family),
+         DescribeSocketType(type), DescribeSocketProtocol(protocol), rc);
+  return rc;
 }

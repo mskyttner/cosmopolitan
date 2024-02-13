@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2021 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -26,6 +26,8 @@ TEST(IsReasonablePath, test) {
   EXPECT_TRUE(IsReasonablePath("/index.html", 11));
   EXPECT_TRUE(IsReasonablePath("/index.html", -1));
   EXPECT_TRUE(IsReasonablePath("/redbean.png", -1));
+  EXPECT_TRUE(IsReasonablePath("/.ca.key", -1));
+  EXPECT_TRUE(IsReasonablePath(".ca.key", -1));
 }
 
 TEST(IsReasonablePath, testEmptyString_allowedIfYouLikeImplicitLeadingSlash) {

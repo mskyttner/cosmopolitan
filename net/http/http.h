@@ -2,6 +2,9 @@
 #define COSMOPOLITAN_LIBC_HTTP_HTTP_H_
 #include "libc/time/struct/tm.h"
 
+#define kHttpRequest  0
+#define kHttpResponse 1
+
 #define kHttpGet     1
 #define kHttpHead    2
 #define kHttpPost    3
@@ -19,6 +22,36 @@
 #define kHttpPatch   15
 #define kHttpReport  16
 #define kHttpUnlock  17
+
+#define kHttpStateStart   0
+#define kHttpStateMethod  1
+#define kHttpStateUri     2
+#define kHttpStateVersion 3
+#define kHttpStateStatus  4
+#define kHttpStateMessage 5
+#define kHttpStateName    6
+#define kHttpStateColon   7
+#define kHttpStateValue   8
+#define kHttpStateCr      9
+#define kHttpStateLf1     10
+#define kHttpStateLf2     11
+
+#define kHttpClientStateHeaders      0
+#define kHttpClientStateBody         1
+#define kHttpClientStateBodyChunked  2
+#define kHttpClientStateBodyLengthed 3
+
+#define kHttpStateChunkStart   0
+#define kHttpStateChunkSize    1
+#define kHttpStateChunkExt     2
+#define kHttpStateChunkLf1     3
+#define kHttpStateChunk        4
+#define kHttpStateChunkCr2     5
+#define kHttpStateChunkLf2     6
+#define kHttpStateTrailerStart 7
+#define kHttpStateTrailer      8
+#define kHttpStateTrailerLf1   9
+#define kHttpStateTrailerLf2   10
 
 #define kHttpHost                          0
 #define kHttpCacheControl                  1
@@ -90,36 +123,67 @@
 #define kHttpTrailer                       67
 #define kHttpTransferEncoding              68
 #define kHttpUpgrade                       69
-#define kHttpUri                           70
-#define kHttpWarning                       71
-#define kHttpWwwAuthenticate               72
-#define kHttpVia                           73
-#define kHttpHeadersMax                    74
+#define kHttpWarning                       70
+#define kHttpWwwAuthenticate               71
+#define kHttpVia                           72
+#define kHttpStrictTransportSecurity       73
+#define kHttpXFrameOptions                 74
+#define kHttpXContentTypeOptions           75
+#define kHttpAltSvc                        76
+#define kHttpReferrerPolicy                77
+#define kHttpXXssProtection                78
+#define kHttpAcceptRanges                  79
+#define kHttpSetCookie                     80
+#define kHttpSecChUa                       81
+#define kHttpSecChUaMobile                 82
+#define kHttpSecFetchSite                  83
+#define kHttpSecFetchMode                  84
+#define kHttpSecFetchUser                  85
+#define kHttpSecFetchDest                  86
+#define kHttpCfRay                         87
+#define kHttpCfVisitor                     88
+#define kHttpCfConnectingIp                89
+#define kHttpCfIpcountry                   90
+#define kHttpSecChUaPlatform               91
+#define kHttpCdnLoop                       92
+#define kHttpHeadersMax                    93
 
-#if !(__ASSEMBLER__ + __LINKER__ + 0)
 COSMOPOLITAN_C_START_
 
-struct HttpRequestSlice {
+struct HttpSlice {
   short a, b;
 };
 
-struct HttpRequest {
-  int i, a;
+struct HttpHeader {
+  struct HttpSlice k;
+  struct HttpSlice v;
+};
+
+struct HttpHeaders {
+  unsigned n, c;
+  struct HttpHeader *p;
+};
+
+struct HttpMessage {
+  int i, a, status;
   unsigned char t;
+  unsigned char type;
   unsigned char method;
   unsigned char version;
-  struct HttpRequestSlice k;
-  struct HttpRequestSlice uri;
-  struct HttpRequestSlice scratch;
-  struct HttpRequestSlice headers[kHttpHeadersMax];
-  struct HttpRequestSlice xmethod;
-  struct HttpRequestHeaders {
-    unsigned n;
-    struct HttpRequestHeader {
-      struct HttpRequestSlice k;
-      struct HttpRequestSlice v;
-    } * p;
-  } xheaders;
+  struct HttpSlice k;
+  struct HttpSlice uri;
+  struct HttpSlice scratch;
+  struct HttpSlice message;
+  struct HttpSlice headers[kHttpHeadersMax];
+  struct HttpSlice xmethod;
+  struct HttpHeaders xheaders;
+};
+
+struct HttpUnchunker {
+  int t;
+  size_t i;
+  size_t j;
+  ssize_t m;
 };
 
 extern const char kHttpToken[256];
@@ -130,23 +194,26 @@ const char *GetHttpReason(int);
 const char *GetHttpHeaderName(int);
 int GetHttpHeader(const char *, size_t);
 int GetHttpMethod(const char *, size_t);
-void InitHttpRequest(struct HttpRequest *);
-void DestroyHttpRequest(struct HttpRequest *);
-int ParseHttpRequest(struct HttpRequest *, const char *, size_t);
-bool HeaderHas(struct HttpRequest *, const char *, int, const char *, size_t);
+void InitHttpMessage(struct HttpMessage *, int);
+void DestroyHttpMessage(struct HttpMessage *);
+int ParseHttpMessage(struct HttpMessage *, const char *, size_t);
+bool HeaderHas(struct HttpMessage *, const char *, int, const char *, size_t);
 int64_t ParseContentLength(const char *, size_t);
 char *FormatHttpDateTime(char[hasatleast 30], struct tm *);
 bool ParseHttpRange(const char *, size_t, long, long *, long *);
 int64_t ParseHttpDateTime(const char *, size_t);
 bool IsValidHttpToken(const char *, size_t);
+bool IsValidCookieValue(const char *, size_t);
 bool IsAcceptablePath(const char *, size_t);
 bool IsAcceptableHost(const char *, size_t);
 bool IsAcceptablePort(const char *, size_t);
 bool IsReasonablePath(const char *, size_t);
-int64_t ParseIp(const char *, size_t);
 int ParseForwarded(const char *, size_t, uint32_t *, uint16_t *);
 bool IsMimeType(const char *, size_t, const char *);
+ssize_t Unchunk(struct HttpUnchunker *, char *, size_t, size_t *);
+const char *FindContentType(const char *, size_t);
+bool IsNoCompressExt(const char *, size_t);
+char *FoldHeader(struct HttpMessage *, const char *, int, size_t *);
 
 COSMOPOLITAN_C_END_
-#endif /* !(__ASSEMBLER__ + __LINKER__ + 0) */
 #endif /* COSMOPOLITAN_LIBC_HTTP_HTTP_H_ */

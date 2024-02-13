@@ -1,16 +1,10 @@
-/*
-** $Id: llimits.h $
-** Limits, basic types, and some other 'installation-dependent' definitions
-** See Copyright Notice in lua.h
-*/
-
 #ifndef llimits_h
 #define llimits_h
 
+#include "libc/limits.h"
 #include "libc/math.h"
 #include "third_party/lua/lua.h"
 
-/* clang-format off */
 
 /*
 ** 'lu_mem' and 'l_mem' are unsigned/signed integers big enough to count
@@ -86,7 +80,6 @@ typedef LUAI_UACINT l_uacInt;
 */
 #if defined LUAI_ASSERT
 #undef NDEBUG
-#include <assert.h>
 #define lua_assert(c)           assert(c)
 #endif
 
@@ -143,22 +136,6 @@ typedef LUAI_UACINT l_uacInt;
 */
 #if !defined(l_castU2S)
 #define l_castU2S(i)	((lua_Integer)(i))
-#endif
-
-
-/*
-** macros to improve jump prediction (used mainly for error handling)
-*/
-#if !defined(likely)
-
-#if defined(__GNUC__)
-#define likely(x)	(__builtin_expect(((x) != 0), 1))
-#define unlikely(x)	(__builtin_expect(((x) != 0), 0))
-#else
-#define likely(x)	(x)
-#define unlikely(x)	(x)
-#endif
-
 #endif
 
 

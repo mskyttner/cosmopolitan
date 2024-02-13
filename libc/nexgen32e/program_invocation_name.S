@@ -1,5 +1,5 @@
 /*-*- mode:unix-assembly; indent-tabs-mode:t; tab-width:8; coding:utf-8     -*-│
-│vi: set et ft=asm ts=8 sw=8 fenc=utf-8                                     :vi│
+│ vi: set noet ft=asm ts=8 sw=8 fenc=utf-8                                 :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -18,8 +18,13 @@
 ╚─────────────────────────────────────────────────────────────────────────────*/
 #include "libc/macros.internal.h"
 
-//	Supplies argv[0] the GNU way.
 	.initbss 300,_init_program_invocation_name
+//	Supplies argv[0] the GNU way.
+//
+//	If argv[0] isn't supplied, this value will be null.
+//
+//	@see	program_invocation_short_name
+//	@see	GetProgramExecutableName()
 program_invocation_name:
 	.quad	0
 	.endobj	program_invocation_name,globl
@@ -29,4 +34,3 @@ program_invocation_name:
 	mov	(%r13),%rax
 	stosq
 	.init.end 300,_init_program_invocation_name
-	.source	__FILE__

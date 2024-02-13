@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,10 +16,11 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
-#include "libc/runtime/gc.internal.h"
+#include "libc/mem/gc.h"
 #include "libc/sysv/consts/map.h"
 #include "libc/sysv/consts/o.h"
 #include "libc/sysv/consts/prot.h"
+#include "libc/x/xasprintf.h"
 #include "third_party/chibicc/chibicc.h"
 #include "tool/build/lib/asmdown.h"
 
@@ -41,7 +42,6 @@ struct DoxWriter {
 };
 
 static void SerializeData(struct Buffer *buf, const void *p, unsigned long n) {
-  struct Slice *s;
   buf->p = realloc(buf->p, buf->n + n);
   memcpy(buf->p + buf->n, p, n);
   buf->n += n;
@@ -283,13 +283,20 @@ static void LoadPublicDefinitions(struct DoxWriter *dox, Obj *prog) {
     if (!obj->javadown) {
       if (*obj->name == '_') continue;
       if (strchr(obj->name, '$')) continue;
-      if (startswith(obj->name, "__gdtoa_")) continue;
       if (obj->visibility && !strcmp(obj->visibility, "hidden")) continue;
+      if (startswith(obj->name, "nsync_") && endswith(obj->name, "_")) continue;
       if (!obj->is_definition && (!obj->is_function || !obj->params ||
                                   !obj->params->name || !*obj->params->name)) {
         continue;
       }
     }
+    if (startswith(obj->name, "__gdtoa_")) continue;
+    if (startswith(obj->name, "sys_")) continue;
+    if (startswith(obj->name, "ioctl_")) continue;
+    if (startswith(obj->name, "nsync_mu_semaphore_")) continue;
+    if (startswith(obj->name, "Describe")) continue;
+    if (startswith(obj->name, "__sig")) continue;
+    if (startswith(obj->name, "__zipos")) continue;
     if (obj->is_static) continue;
     if (obj->is_string_literal) continue;
     if (obj->section && startswith(obj->section, ".init_array")) continue;

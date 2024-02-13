@@ -1,5 +1,5 @@
-/*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+/*-*- mode:c;indent-tabs-mode:t;c-basic-offset:8;tab-width:8;coding:utf-8   -*-│
+│ vi: set noet ft=c ts=8 sw=8 fenc=utf-8                                   :vi │
 ╚──────────────────────────────────────────────────────────────────────────────╝
 │                                                                              │
 │  Musl Libc                                                                   │
@@ -26,19 +26,13 @@
 │                                                                              │
 ╚─────────────────────────────────────────────────────────────────────────────*/
 #include "libc/math.h"
+#include "libc/tinymath/feval.internal.h"
 
 asm(".ident\t\"\\n\\n\
 Musl libc (MIT License)\\n\
 Copyright 2005-2014 Rich Felker, et. al.\"");
 asm(".include \"libc/disclaimer.inc\"");
-
-/* clang-format off */
-
-static inline void force_eval(double x)
-{
-	volatile double y;
-	y = x;
-}
+// clang-format off
 
 double nextafter(double x, double y)
 {
@@ -46,7 +40,7 @@ double nextafter(double x, double y)
 	uint64_t ax, ay;
 	int e;
 
-	if (isnan(x) || isnan(y))
+	if (isunordered(x, y))
 		return x + y;
 	if (ux.i == uy.i)
 		return y;
@@ -63,9 +57,13 @@ double nextafter(double x, double y)
 	e = ux.i >> 52 & 0x7ff;
 	/* raise overflow if ux.f is infinite and x is finite */
 	if (e == 0x7ff)
-		force_eval(x+x);
+		feval(x+x);
 	/* raise underflow if ux.f is subnormal or zero */
 	if (e == 0)
-		force_eval(x*x + ux.f*ux.f);
+		feval(x*x + ux.f*ux.f);
 	return ux.f;
 }
+
+#if LDBL_MANT_DIG == 53 && LDBL_MAX_EXP == 1024
+__weak_reference(nextafter, nextafterl);
+#endif

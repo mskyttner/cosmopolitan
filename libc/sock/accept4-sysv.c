@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,32 +16,40 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
+#include "libc/assert.h"
+#include "libc/calls/syscall-sysv.internal.h"
 #include "libc/dce.h"
 #include "libc/errno.h"
 #include "libc/sock/internal.h"
 #include "libc/sock/sock.h"
+#include "libc/sock/struct/sockaddr.internal.h"
+#include "libc/sysv/consts/f.h"
+#include "libc/sysv/consts/fd.h"
+#include "libc/sysv/consts/o.h"
+#include "libc/sysv/consts/sock.h"
+#include "libc/sysv/errfuns.h"
 
-#define __NR_accept4_linux 0x0120 /* rhel5:enosysevil */
-
-int sys_accept4(int server, void *addr, uint32_t *addrsize, int flags) {
-  static bool once, demodernize;
-  int olderr, client;
-  if (!flags || demodernize) goto TriedAndTrue;
+int sys_accept4(int server, struct sockaddr_storage *addr, int flags) {
+  uint32_t size = sizeof(*addr);
+  int olderr, client, file_mode;
   olderr = errno;
-  client = __sys_accept4(server, addr, addrsize, flags);
+  client = __sys_accept4(server, addr, &size, flags);
   if (client == -1 && errno == ENOSYS) {
+    // XNU/RHEL5/etc. don't support accept4(), but it's easilly polyfilled
     errno = olderr;
-  TriedAndTrue:
-    client = __fixupnewsockfd(__sys_accept(server, addr, addrsize, 0), flags);
-  } else if (SupportsLinux() && !once) {
-    once = true;
-    if (client == __NR_accept4_linux) {
-      demodernize = true;
-      goto TriedAndTrue;
+    if (flags & ~(SOCK_CLOEXEC | SOCK_NONBLOCK)) return einval();
+    if ((client = __sys_accept(server, addr, &size, 0)) != -1) {
+      // __sys_accept() has inconsistent flag inheritence across platforms
+      // this is one of the issues that accept4() was invented for solving
+      unassert((file_mode = __sys_fcntl(client, F_GETFD)) != -1);
+      unassert(!__sys_fcntl(client, F_SETFD,
+                            ((file_mode & ~FD_CLOEXEC) |
+                             (flags & SOCK_CLOEXEC ? FD_CLOEXEC : 0))));
+      unassert((file_mode = __sys_fcntl(client, F_GETFL)) != -1);
+      unassert(!__sys_fcntl(client, F_SETFL,
+                            ((file_mode & ~O_NONBLOCK) |
+                             (flags & SOCK_NONBLOCK ? O_NONBLOCK : 0))));
     }
-  }
-  if (client != -1 && IsBsd()) {
-    sockaddr2linux(addr);
   }
   return client;
 }

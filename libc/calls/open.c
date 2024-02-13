@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -22,13 +22,16 @@
 /**
  * Opens file.
  *
- * @param file is a UTF-8 string, preferably relative w/ forward slashes
- * @param flags should be O_RDONLY, O_WRONLY, or O_RDWR, and can be or'd
- *     with O_CREAT, O_TRUNC, O_APPEND, O_EXCL, O_CLOEXEC, O_TMPFILE
- * @param mode is an octal user/group/other permission signifier, that's
- *     ignored if O_CREAT or O_TMPFILE weren't passed
- * @return number needing close(), or -1 w/ errno
+ * This is equivalent to saying:
+ *
+ *     int fd = openat(AT_FDCWD, file, flags, ...);
+ *
+ * @param file specifies filesystem path to open
+ * @return file descriptor, or -1 w/ errno
+ * @see openat() for further documentation
+ * @cancelationpoint
  * @asyncsignalsafe
+ * @restartable
  * @vforksafe
  */
 int open(const char *file, int flags, ...) {
@@ -39,3 +42,5 @@ int open(const char *file, int flags, ...) {
   va_end(va);
   return openat(AT_FDCWD, file, flags, mode);
 }
+
+__weak_reference(open, open64);

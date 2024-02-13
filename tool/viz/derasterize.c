@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -19,23 +19,20 @@
 #include "dsp/tty/itoa8.h"
 #include "libc/assert.h"
 #include "libc/calls/calls.h"
-#include "libc/calls/ioctl.h"
 #include "libc/calls/struct/stat.h"
 #include "libc/calls/termios.h"
 #include "libc/fmt/conv.h"
-#include "libc/fmt/fmt.h"
 #include "libc/limits.h"
 #include "libc/log/check.h"
 #include "libc/log/log.h"
 #include "libc/macros.internal.h"
 #include "libc/math.h"
+#include "libc/mem/gc.h"
 #include "libc/mem/mem.h"
 #include "libc/nexgen32e/x86feature.h"
-#include "libc/runtime/gc.internal.h"
 #include "libc/runtime/runtime.h"
 #include "libc/stdio/stdio.h"
 #include "libc/str/str.h"
-#include "libc/str/tpenc.h"
 #include "libc/sysv/consts/ex.h"
 #include "libc/sysv/consts/exit.h"
 #include "libc/sysv/consts/fileno.h"
@@ -44,9 +41,10 @@
 #include "libc/sysv/consts/o.h"
 #include "libc/sysv/consts/prot.h"
 #include "libc/x/x.h"
-#include "third_party/getopt/getopt.h"
+#include "third_party/getopt/getopt.internal.h"
 #include "third_party/stb/stb_image.h"
 #include "third_party/stb/stb_image_resize.h"
+#ifdef __x86_64__
 
 #define HELPTEXT \
   "\n\
@@ -104,7 +102,7 @@ int y_; /* -y HEIGHT [in flexidecimal] */
 #define Mode BEST
 
 #if Mode == BEST
-#define MC 9u /* log2(#) of color combos to consider */
+#define MC 9u  /* log2(#) of color combos to consider */
 #define GN 35u /* # of glyphs to consider */
 #elif Mode == FAST
 #define MC 6u
@@ -114,10 +112,10 @@ int y_; /* -y HEIGHT [in flexidecimal] */
 #define GN 25u
 #endif
 
-#define CN 3u /* # channels (rgb) */
-#define YS 8u /* row stride -or- block height */
-#define XS 4u /* column stride -or- block width */
-#define GT 44u /* total glyphs */
+#define CN 3u        /* # channels (rgb) */
+#define YS 8u        /* row stride -or- block height */
+#define XS 4u        /* column stride -or- block width */
+#define GT 44u       /* total glyphs */
 #define BN (YS * XS) /* # scalars in block/glyph plane */
 
 #define PHIPRIME 0x9E3779B1u
@@ -185,7 +183,7 @@ static void float2rgb(unsigned n, unsigned char *u, float *f) {
  * This makes subtraction look good by flattening out the bias curve
  * that PC display manufacturers like to use.
  */
-static noinline void rgb2lin(unsigned n, float *f, const unsigned char *u) {
+static dontinline void rgb2lin(unsigned n, float *f, const unsigned char *u) {
   unsigned i;
   rgb2float(n, f, u);
   for (i = 0; i < n; ++i) f[i] = frgb2lin(f[i]);
@@ -194,7 +192,7 @@ static noinline void rgb2lin(unsigned n, float *f, const unsigned char *u) {
 /**
  * Converts linear RGB to standard RGB.
  */
-static noinline void rgb2std(unsigned n, unsigned char *u, float *f) {
+static dontinline void rgb2std(unsigned n, unsigned char *u, float *f) {
   unsigned i;
   for (i = 0; i < n; ++i) f[i] = frgb2std(f[i]);
   float2rgb(n, u, f);
@@ -248,7 +246,7 @@ static unsigned combinecolors(unsigned char bf[1u << MC][2],
                               const unsigned char bl[CN][YS * XS]) {
   uint64_t hv, ht[(1u << MC) * 2];
   unsigned i, j, n, b, f, h, hi, bu, fu;
-  memset(ht, 0, sizeof(ht));
+  bzero(ht, sizeof(ht));
   for (n = b = 0; b < BN && n < (1u << MC); ++b) {
     bu = bl[2][b] << 020 | bl[1][b] << 010 | bl[0][b];
     hi = 0;
@@ -295,7 +293,7 @@ static unsigned combinecolors(unsigned char bf[1u << MC][2],
                            const float lb[CN][YS * XS]) {         \
     unsigned i, k, gu;                                            \
     float p[BN], q[BN], fu, bu, r;                                \
-    memset(q, 0, sizeof(q));                                      \
+    bzero(q, sizeof(q));                                          \
     for (k = 0; k < CN; ++k) {                                    \
       gu = kGlyphs[g];                                            \
       bu = lb[k][b];                                              \
@@ -311,8 +309,8 @@ static unsigned combinecolors(unsigned char bf[1u << MC][2],
     return r;                                                     \
   }
 
-ADJUDICATE(adjudicate_avx2, microarchitecture("avx2,fma"))
-ADJUDICATE(adjudicate_avx, microarchitecture("avx"))
+ADJUDICATE(adjudicate_avx2, _Microarchitecture("avx2,fma"))
+ADJUDICATE(adjudicate_avx, _Microarchitecture("avx"))
 ADJUDICATE(adjudicate_default, )
 
 static float (*adjudicate_hook)(unsigned, unsigned, unsigned,
@@ -336,7 +334,7 @@ static float adjudicate(unsigned b, unsigned f, unsigned g,
                         const float lb[CN][YS * XS]) {
   unsigned i, k, gu;
   float p[BN], q[BN], fu, bu, r;
-  memset(q, 0, sizeof(q));
+  bzero(q, sizeof(q));
   for (k = 0; k < CN; ++k) {
     gu = kGlyphs[g];
     bu = lb[k][b];
@@ -434,7 +432,7 @@ static void PrintImage(unsigned yn, unsigned xn,
   char *v, *vt;
   size = yn * (xn * (32 + (2 + (1 + 3) * 3) * 2 + 1 + 3)) * 1 + 5 + 1;
   size = ROUNDUP(size, FRAMESIZE);
-  CHECK_NE(MAP_FAILED, (vt = mapanon(size)));
+  CHECK_NOTNULL((vt = _mapanon(size)));
   v = RenderImage(vt, yn, xn, rgb);
   *v++ = '\r';
   *v++ = 033;
@@ -452,8 +450,8 @@ static void GetTermSize(unsigned out_rows[1], unsigned out_cols[1]) {
   struct winsize ws;
   ws.ws_row = 24;
   ws.ws_col = 80;
-  if (ioctl(STDIN_FILENO, TIOCGWINSZ, &ws) == -1) {
-    ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws);
+  if (tcgetwinsize(STDIN_FILENO, &ws) == -1) {
+    tcgetwinsize(STDOUT_FILENO, &ws);
   }
   out_rows[0] = ws.ws_row;
   out_cols[0] = ws.ws_col;
@@ -488,7 +486,7 @@ static void LoadFileViaImageMagick(const char *path, unsigned yn, unsigned xn,
   const char *convert;
   int pid, ws, pipefds[2];
   char pathbuf[PATH_MAX], dim[32];
-  if (!(convert = commandv("convert", pathbuf))) {
+  if (!(convert = commandv("convert", pathbuf, sizeof(pathbuf)))) {
     fputs("error: `convert` command not found\n"
           "try: apt-get install imagemagick\n",
           stderr);
@@ -498,8 +496,9 @@ static void LoadFileViaImageMagick(const char *path, unsigned yn, unsigned xn,
   CHECK_NE(-1, pipe2(pipefds, O_CLOEXEC));
   if (!(pid = vfork())) {
     dup2(pipefds[1], 1);
-    execv(convert, (char *const[]){"convert", path, "-resize", dim, "-depth",
-                                   "8", "-colorspace", "sRGB", "rgb:-", NULL});
+    execv(convert,
+          (char *const[]){"convert", (char *)path, "-resize", dim, "-depth",
+                          "8", "-colorspace", "sRGB", "rgb:-", NULL});
     abort();
   }
   CHECK_NE(-1, close(pipefds[1]));
@@ -511,8 +510,7 @@ static void LoadFileViaImageMagick(const char *path, unsigned yn, unsigned xn,
 
 static void LoadFile(const char *path, size_t yn, size_t xn, void *rgb) {
   struct stat st;
-  size_t data2size, data3size;
-  void *map, *data, *data2, *data3;
+  void *map, *data;
   int fd, gotx, goty, channels_in_file;
   CHECK_NE(-1, (fd = open(path, O_RDONLY)), "%s", path);
   CHECK_NE(-1, fstat(fd, &st));
@@ -532,8 +530,8 @@ static void LoadFile(const char *path, size_t yn, size_t xn, void *rgb) {
   CHECK_EQ(CN, 3);
   data2size = ROUNDUP(sizeof(float) * goty * gotx * CN, FRAMESIZE);
   data3size = ROUNDUP(sizeof(float) * yn * YS * xn * XS * CN, FRAMESIZE);
-  CHECK_NE(MAP_FAILED, (data2 = mapanon(data2size)));
-  CHECK_NE(MAP_FAILED, (data3 = mapanon(data3size)));
+  CHECK_NOTNULL((data2 = _mapanon(data2size)));
+  CHECK_NOTNULL((data3 = _mapanon(data3size)));
   rgb2lin(goty * gotx * CN, data2, data);
   lanczos3(yn * YS, xn * XS, data3, goty, gotx, data2, gotx * 3);
   rgb2std(yn * YS * xn * XS * CN, rgb, data3);
@@ -553,8 +551,8 @@ static int ParseNumberOption(const char *arg) {
   return x;
 }
 
-static void PrintUsage(int rc, FILE *f) {
-  fputs(HELPTEXT, f);
+static void PrintUsage(int rc, int fd) {
+  tinyprint(fd, HELPTEXT, NULL);
   exit(rc);
 }
 
@@ -575,9 +573,12 @@ static void GetOpts(int argc, char *argv[]) {
         break;
       case '?':
       case 'H':
-        PrintUsage(EXIT_SUCCESS, stdout);
       default:
-        PrintUsage(EX_USAGE, stderr);
+        if (opt == optopt) {
+          PrintUsage(EXIT_SUCCESS, STDOUT_FILENO);
+        } else {
+          PrintUsage(EX_USAGE, STDERR_FILENO);
+        }
     }
   }
 }
@@ -586,9 +587,8 @@ int main(int argc, char *argv[]) {
   int i;
   void *rgb;
   size_t size;
-  char *option;
   unsigned yd, xd;
-  showcrashreports();
+  ShowCrashReports();
   GetOpts(argc, argv);
   // if sizes are given, 2 cases:
   //  - positive values: use that as the target size
@@ -603,7 +603,7 @@ int main(int argc, char *argv[]) {
   // FIXME: on the conversion stage should do 2Y because of halfblocks
   // printf( "filename >%s<\tx >%d<\ty >%d<\n\n", filename, x_, y_);
   size = y_ * YS * x_ * XS * CN;
-  CHECK_NE(MAP_FAILED, (rgb = mapanon(ROUNDUP(size, FRAMESIZE))));
+  CHECK_NOTNULL((rgb = _mapanon(ROUNDUP(size, FRAMESIZE))));
   for (i = optind; i < argc; ++i) {
     if (!argv[i]) continue;
     if (m_) {
@@ -616,3 +616,10 @@ int main(int argc, char *argv[]) {
   munmap(rgb, ROUNDUP(size, FRAMESIZE));
   return 0;
 }
+
+#else
+
+int main(int argc, char *argv[]) {
+}
+
+#endif /* __x86_64__ */

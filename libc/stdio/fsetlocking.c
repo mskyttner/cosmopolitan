@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2021 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -19,8 +19,8 @@
 #include "libc/stdio/stdio_ext.h"
 
 /**
- * Does nothing and returns `FSETLOCKING_BYCALLER`.
+ * Does nothing and returns `FSETLOCKING_INTERNAL`.
  */
 int __fsetlocking(FILE *f, int type) {
-  return FSETLOCKING_BYCALLER;
+  return FSETLOCKING_INTERNAL;
 }

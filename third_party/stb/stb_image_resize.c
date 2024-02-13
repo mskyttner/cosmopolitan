@@ -1,7 +1,7 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
-│ Copyright 2020 Justine Alexandra Roberts Tunney                              │
+│ Copyright 2023 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
 │ Permission to use, copy, modify, and/or distribute this software for         │
 │ any purpose with or without fee is hereby granted, provided that the         │
@@ -16,12 +16,12 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
+#include "third_party/stb/stb_image_resize.h"
 #include "libc/assert.h"
 #include "libc/macros.internal.h"
 #include "libc/math.h"
 #include "libc/mem/mem.h"
 #include "libc/str/str.h"
-#include "third_party/stb/stb_image_resize.h"
 
 asm(".ident\t\"\\n\\n\
 stb_image_resize (Public Domain)\\n\
@@ -394,9 +394,7 @@ static float stbir__support_trapezoid(float scale) {
 
 static float stbir__filter_triangle(float x, float s) {
   STBIR__UNUSED_PARAM(s);
-
   x = (float)fabs(x);
-
   if (x <= 1.0f)
     return 1 - x;
   else
@@ -405,40 +403,31 @@ static float stbir__filter_triangle(float x, float s) {
 
 static float stbir__filter_cubic(float x, float s) {
   STBIR__UNUSED_PARAM(s);
-
   x = (float)fabs(x);
-
   if (x < 1.0f)
     return (4 + x * x * (3 * x - 6)) / 6;
   else if (x < 2.0f)
     return (8 + x * (-12 + x * (6 - x))) / 6;
-
   return (0.0f);
 }
 
 static float stbir__filter_catmullrom(float x, float s) {
   STBIR__UNUSED_PARAM(s);
-
   x = (float)fabs(x);
-
   if (x < 1.0f)
     return 1 - x * x * (2.5f - 1.5f * x);
   else if (x < 2.0f)
     return 2 - x * (4 + x * (0.5f * x - 2.5f));
-
   return (0.0f);
 }
 
 static float stbir__filter_mitchell(float x, float s) {
   STBIR__UNUSED_PARAM(s);
-
   x = (float)fabs(x);
-
   if (x < 1.0f)
     return (16 + x * x * (21 * x - 36)) / 18;
   else if (x < 2.0f)
     return (32 + x * (-60 + x * (36 - 7 * x))) / 18;
-
   return (0.0f);
 }
 
@@ -666,9 +655,14 @@ static void stbir__calculate_coefficients_upsample(
     total_filter += coefficient_group[i];
   }
 
-  STBIR_ASSERT(stbir__filter_info_table[filter].kernel(
-                   (float)(in_last_pixel + 1) + 0.5f - in_center_of_out,
-                   1 / scale) == 0);
+  // NOTE(fg): Not actually true in general, nor is there any reason to expect
+  // it should be. It would be true in exact math but is at best approximately
+  // true in floating-point math, and it would not make sense to try and put
+  // actual bounds on this here because it depends on the image aspect ratio
+  // which can get pretty extreme.
+  // STBIR_ASSERT(stbir__filter_info_table[filter].kernel(
+  //                 (float)(in_last_pixel + 1) + 0.5f - in_center_of_out,
+  //                 1 / scale) == 0);
 
   STBIR_ASSERT(total_filter > 0.9);
   STBIR_ASSERT(total_filter < 1.1f);  // Make sure it's not way off.
@@ -712,9 +706,14 @@ static void stbir__calculate_coefficients_downsample(
         stbir__filter_info_table[filter].kernel(x, scale_ratio) * scale_ratio;
   }
 
-  STBIR_ASSERT(stbir__filter_info_table[filter].kernel(
-                   (float)(out_last_pixel + 1) + 0.5f - out_center_of_in,
-                   scale_ratio) == 0);
+  // NOTE(fg): Not actually true in general, nor is there any reason to expect
+  // it should be. It would be true in exact math but is at best approximately
+  // true in floating-point math, and it would not make sense to try and put
+  // actual bounds on this here because it depends on the image aspect ratio
+  // which can get pretty extreme.
+  // STBIR_ASSERT(stbir__filter_info_table[filter].kernel(
+  //                 (float)(out_last_pixel + 1) + 0.5f - out_center_of_in,
+  //                 scale_ratio) == 0);
 
   for (i = out_last_pixel - out_first_pixel; i >= 0; i--) {
     if (coefficient_group[i]) break;
@@ -862,10 +861,9 @@ static float* stbir__get_decode_buffer(stbir__info* stbir_info) {
 }
 
 #define STBIR__DECODE(type, colorspace) \
-  ((type) * (STBIR_MAX_COLORSPACES) + (colorspace))
+  ((int)(type) * (STBIR_MAX_COLORSPACES) + (int)(colorspace))
 
-static optimizespeed void stbir__decode_scanline(stbir__info* stbir_info,
-                                                 int n) {
+static void stbir__decode_scanline(stbir__info* stbir_info, int n) {
   int c;
   int channels = stbir_info->channels;
   int alpha_channel = stbir_info->alpha_channel;
@@ -1080,7 +1078,7 @@ static float* stbir__add_empty_ring_buffer_entry(stbir__info* stbir_info,
   ring_buffer = stbir__get_ring_buffer_entry(
       stbir_info->ring_buffer, ring_buffer_index,
       stbir_info->ring_buffer_length_bytes / sizeof(float));
-  memset(ring_buffer, 0, stbir_info->ring_buffer_length_bytes);
+  bzero(ring_buffer, stbir_info->ring_buffer_length_bytes);
 
   return ring_buffer;
 }
@@ -1211,7 +1209,6 @@ static void stbir__resample_horizontal_downsample(stbir__info* stbir_info,
           int out_pixel_index = k * 1;
           float coefficient =
               horizontal_coefficients[coefficient_group + k - n0];
-          STBIR_ASSERT(coefficient != 0);
           output_buffer[out_pixel_index + 0] +=
               decode_buffer[in_pixel_index + 0] * coefficient;
         }
@@ -1232,7 +1229,6 @@ static void stbir__resample_horizontal_downsample(stbir__info* stbir_info,
           int out_pixel_index = k * 2;
           float coefficient =
               horizontal_coefficients[coefficient_group + k - n0];
-          STBIR_ASSERT(coefficient != 0);
           output_buffer[out_pixel_index + 0] +=
               decode_buffer[in_pixel_index + 0] * coefficient;
           output_buffer[out_pixel_index + 1] +=
@@ -1255,7 +1251,6 @@ static void stbir__resample_horizontal_downsample(stbir__info* stbir_info,
           int out_pixel_index = k * 3;
           float coefficient =
               horizontal_coefficients[coefficient_group + k - n0];
-          STBIR_ASSERT(coefficient != 0);
           output_buffer[out_pixel_index + 0] +=
               decode_buffer[in_pixel_index + 0] * coefficient;
           output_buffer[out_pixel_index + 1] +=
@@ -1280,7 +1275,6 @@ static void stbir__resample_horizontal_downsample(stbir__info* stbir_info,
           int out_pixel_index = k * 4;
           float coefficient =
               horizontal_coefficients[coefficient_group + k - n0];
-          STBIR_ASSERT(coefficient != 0);
           output_buffer[out_pixel_index + 0] +=
               decode_buffer[in_pixel_index + 0] * coefficient;
           output_buffer[out_pixel_index + 1] +=
@@ -1340,8 +1334,8 @@ static void stbir__decode_and_resample_downsample(stbir__info* stbir_info,
   // Decode the nth scanline from the source image into the decode buffer.
   stbir__decode_scanline(stbir_info, n);
 
-  memset(stbir_info->horizontal_buffer, 0,
-         stbir_info->output_w * stbir_info->channels * sizeof(float));
+  bzero(stbir_info->horizontal_buffer,
+        stbir_info->output_w * stbir_info->channels * sizeof(float));
 
   // Now resample it into the horizontal buffer.
   if (stbir__use_width_upsampling(stbir_info))
@@ -1584,7 +1578,7 @@ static void stbir__resample_vertical_upsample(stbir__info* stbir_info, int n) {
 
   STBIR_ASSERT(stbir__use_height_upsampling(stbir_info));
 
-  memset(encode_buffer, 0, output_w * sizeof(float) * channels);
+  bzero(encode_buffer, output_w * sizeof(float) * channels);
 
   // I tried reblocking this for better cache usage of encode_buffer
   // (using x_outer, k, x_inner), but it lost speed. -- stb
@@ -2104,7 +2098,7 @@ static int stbir__resize_allocated(
 
   if (tempmem_size_in_bytes < memory_required) return 0;
 
-  memset(tempmem, 0, tempmem_size_in_bytes);
+  bzero(tempmem, tempmem_size_in_bytes);
 
   info->input_data = input_data;
   info->input_stride_bytes = width_stride_input;

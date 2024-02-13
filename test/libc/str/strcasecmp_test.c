@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2021 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -22,6 +22,8 @@
 
 TEST(strcasecmp, test) {
   EXPECT_EQ(0, strcasecmp("HELLO", "hello"));
+  EXPECT_EQ(0, strcasecmp("HELLOHELLOHELLOHELLOHELLOHELLO",
+                          "hellohellohellohellohellohello"));
   EXPECT_EQ(-17, strcasecmp("HELLO", "yello"));
   EXPECT_EQ(-17, strcasecmp("HELLO", "YELLO"));
   EXPECT_EQ(+17, strcasecmp("yello", "HELLO"));
@@ -29,7 +31,10 @@ TEST(strcasecmp, test) {
 }
 
 BENCH(strcasecmp, bench) {
-  EZBENCH2("strcasecmp 16 eq", donothing,
-           EXPROPRIATE(
-               strcasecmp(VEIL("r", "abcdefghijklmnop"), "ABCDEFGHIJKLMNOP")));
+  EZBENCH2("strcasecmp 16 eq (same)", donothing,
+           __expropriate(strcasecmp(__veil("r", "abcdefghijklmnop"),
+                                    "abcdefghijklmnop")));
+  EZBENCH2("strcasecmp 16 eq (evil)", donothing,
+           __expropriate(strcasecmp(__veil("r", "abcdefghijklmnop"),
+                                    "ABCDEFGHIJKLMNOP")));
 }

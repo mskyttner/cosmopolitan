@@ -1,17 +1,9 @@
-/*
-** $Id: lundump.h $
-** load precompiled Lua chunks
-** See Copyright Notice in lua.h
-*/
-
 #ifndef lundump_h
 #define lundump_h
-
 #include "third_party/lua/llimits.h"
 #include "third_party/lua/lobject.h"
 #include "third_party/lua/lzio.h"
 
-/* clang-format off */
 
 /* data to catch conversion errors */
 #define LUAC_DATA	"\x19\x93\r\n\x1a\n"

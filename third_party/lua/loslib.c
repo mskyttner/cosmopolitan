@@ -1,27 +1,52 @@
-/*
-** $Id: loslib.c $
-** Standard Operating System library
-** See Copyright Notice in lua.h
-*/
-
+/*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
+╚──────────────────────────────────────────────────────────────────────────────╝
+│                                                                              │
+│  Lua                                                                         │
+│  Copyright © 2004-2021 Lua.org, PUC-Rio.                                     │
+│                                                                              │
+│  Permission is hereby granted, free of charge, to any person obtaining       │
+│  a copy of this software and associated documentation files (the             │
+│  "Software"), to deal in the Software without restriction, including         │
+│  without limitation the rights to use, copy, modify, merge, publish,         │
+│  distribute, sublicense, and/or sell copies of the Software, and to          │
+│  permit persons to whom the Software is furnished to do so, subject to       │
+│  the following conditions:                                                   │
+│                                                                              │
+│  The above copyright notice and this permission notice shall be              │
+│  included in all copies or substantial portions of the Software.             │
+│                                                                              │
+│  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,             │
+│  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF          │
+│  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.      │
+│  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY        │
+│  CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,        │
+│  TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE           │
+│  SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                      │
+│                                                                              │
+╚─────────────────────────────────────────────────────────────────────────────*/
 #define loslib_c
 #define LUA_LIB
-
 #include "libc/calls/calls.h"
 #include "libc/calls/weirdtypes.h"
 #include "libc/errno.h"
 #include "libc/runtime/runtime.h"
-#include "libc/stdio/temp.h"
+#include "libc/str/locale.h"
+#include "libc/str/str.h"
 #include "libc/sysv/consts/exit.h"
+#include "libc/temp.h"
 #include "libc/time/struct/tm.h"
 #include "libc/time/time.h"
-#include "libc/unicode/locale.h"
 #include "third_party/lua/lauxlib.h"
 #include "third_party/lua/lprefix.h"
 #include "third_party/lua/lua.h"
 #include "third_party/lua/lualib.h"
 
-/* clang-format off */
+asm(".ident\t\"\\n\\n\
+Lua 5.4.3 (MIT License)\\n\
+Copyright 1994–2021 Lua.org, PUC-Rio.\"");
+asm(".include \"libc/disclaimer.inc\"");
+
 
 /*
 ** {==================================================================
@@ -116,7 +141,7 @@
 #define LUA_TMPNAMBUFSIZE	32
 
 #define lua_tmpnam(b,e) { \
-        strcpy(b, kTmpPath); \
+        strcpy(b, __get_tmpdir()); \
         strcat(b, "lua_XXXXXX"); \
         e = mkstemp(b); \
         if (e != -1) close(e); \
@@ -166,7 +191,7 @@ static int os_tmpname (lua_State *L) {
   char buff[LUA_TMPNAMBUFSIZE];
   int err;
   lua_tmpnam(buff, err);
-  if (err)
+  if (l_unlikely(err))
     return luaL_error(L, "unable to generate a unique filename");
   lua_pushstring(L, buff);
   return 1;
@@ -204,7 +229,7 @@ static int os_clock (lua_State *L) {
 */
 static void setfield (lua_State *L, const char *key, int value, int delta) {
   #if (defined(LUA_NUMTIME) && LUA_MAXINTEGER <= INT_MAX)
-    if (value > LUA_MAXINTEGER - delta)
+    if (l_unlikely(value > LUA_MAXINTEGER - delta))
       luaL_error(L, "field '%s' is out-of-bound", key);
   #endif
   lua_pushinteger(L, (lua_Integer)value + delta);
@@ -249,9 +274,9 @@ static int getfield (lua_State *L, const char *key, int d, int delta) {
   int t = lua_getfield(L, -1, key);  /* get field and its type */
   lua_Integer res = lua_tointegerx(L, -1, &isnum);
   if (!isnum) {  /* field is not an integer? */
-    if (t != LUA_TNIL)  /* some other value? */
+    if (l_unlikely(t != LUA_TNIL))  /* some other value? */
       return luaL_error(L, "field '%s' is not an integer", key);
-    else if (d < 0)  /* absent field; no default? */
+    else if (l_unlikely(d < 0))  /* absent field; no default? */
       return luaL_error(L, "field '%s' missing in date table", key);
     res = d;
   }

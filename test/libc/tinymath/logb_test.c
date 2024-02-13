@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -18,6 +18,8 @@
 ╚─────────────────────────────────────────────────────────────────────────────*/
 #include "libc/limits.h"
 #include "libc/math.h"
+#include "libc/stdio/rand.h"
+#include "libc/stdio/stdio.h"
 #include "libc/testlib/testlib.h"
 
 TEST(ilogb, yolo) {
@@ -48,4 +50,15 @@ TEST(logb, yolo) {
   EXPECT_EQ(1, (int)logbl(2));
   EXPECT_EQ(2, (int)logbl(4));
   EXPECT_EQ(63, (int)logbl(1e19));
+}
+
+TEST(ilogb, NANandZero) {
+  EXPECT_EQ(FP_ILOGB0, ilogb(0.0));
+  EXPECT_EQ(FP_ILOGBNAN, ilogb(NAN));
+  EXPECT_EQ(FP_ILOGB0, (int)ilogb(0));
+  EXPECT_EQ(FP_ILOGBNAN, (int)ilogb(NAN));
+  EXPECT_EQ(FP_ILOGB0, ilogbf(0));
+  EXPECT_EQ(FP_ILOGBNAN, ilogbf(NAN));
+  EXPECT_EQ(FP_ILOGB0, ilogbl(0));
+  EXPECT_EQ(FP_ILOGBNAN, ilogbl(NAN));
 }

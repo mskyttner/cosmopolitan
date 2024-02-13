@@ -1,5 +1,5 @@
 /*-*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;tab-width:8;coding:utf-8 -*-│
-│vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
+│ vi: set et ft=c ts=2 sts=2 sw=2 fenc=utf-8                               :vi │
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2020 Justine Alexandra Roberts Tunney                              │
 │                                                                              │
@@ -16,7 +16,10 @@
 │ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR             │
 │ PERFORMANCE OF THIS SOFTWARE.                                                │
 ╚─────────────────────────────────────────────────────────────────────────────*/
+#include "libc/mem/gc.h"
+#include "libc/mem/mem.h"
 #include "libc/str/str.h"
+#include "libc/testlib/ezbench.h"
 #include "libc/testlib/testlib.h"
 
 TEST(strlcpy, testEmptyBuffer_doesNothing) {
@@ -33,4 +36,14 @@ TEST(strlcpy, testShortBuffer_copies) {
   char buf[2] = {1, 1};
   EXPECT_EQ(5, strlcpy(buf, "hello", 2));
   EXPECT_STREQ("h", buf);
+}
+
+BENCH(strlcpy, bench) {
+  char buf[256];
+  EZBENCH2(
+      "strlcpy", donothing,
+      __expropriate(strlcpy(__veil("r", buf), "hello there", sizeof(buf))));
+  EZBENCH2(
+      "strncpy", donothing,
+      __expropriate(strncpy(__veil("r", buf), "hello there", sizeof(buf))));
 }
